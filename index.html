@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#182b27">
+<title>Мой штаб</title>
+<style>
+:root{--bg:#f3f5f2;--panel:#fff;--ink:#17231f;--muted:#69756f;--line:#dfe6e1;--green:#1f6b50;--green2:#e3f2e9;--red:#a83b3b;--shadow:0 5px 20px rgba(25,50,40,.06)}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+header{background:#182b27;color:white;padding:24px 18px 18px}header .wrap,main{max-width:900px;margin:auto}header .eyebrow{font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:#b9d4c7}h1{margin:5px 0 3px;font-size:28px;letter-spacing:-.03em}header p{margin:0;color:#d4e2db;font-size:14px}
+main{padding:16px 14px 36px}.datebar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 2px 14px;color:var(--muted);font-size:13px}
+.tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:15px}.tab{border:1px solid var(--line);background:#fff;border-radius:12px;padding:12px 6px;font-weight:650;color:#4c5a53;cursor:pointer}.tab.active{background:var(--green);border-color:var(--green);color:#fff}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:17px;padding:17px;margin-bottom:13px;box-shadow:var(--shadow)}h2{font-size:19px;letter-spacing:-.02em;margin:0 0 5px}h3{font-size:15px;margin:0 0 10px}.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.row{display:flex;gap:9px;align-items:center}.row>*{min-width:0}.row .grow{flex:1}
+input,select,textarea{width:100%;font:inherit;border:1px solid #d5ded8;border-radius:10px;background:#fff;padding:11px 12px;color:var(--ink);outline:none}input:focus,select:focus,textarea:focus{border-color:var(--green);box-shadow:0 0 0 3px #1f6b5018}textarea{resize:vertical;min-height:90px}
+button{font:inherit}.btn{border:0;background:var(--green);color:white;padding:11px 14px;border-radius:10px;font-weight:650;cursor:pointer;white-space:nowrap}.btn.secondary{background:#edf2ee;color:#2e4d40}.btn.danger{background:#fff0f0;color:var(--red)}.btn.small{padding:7px 10px;font-size:13px}
+.formgrid{display:grid;grid-template-columns:1fr 145px;gap:8px;margin:12px 0}.formgrid .full{grid-column:1/-1}.tasklist,.entrylist,.goallist{display:grid;gap:9px}
+.item{border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;gap:10px;align-items:flex-start}.item.done{opacity:.65}.item.done .itemtitle{text-decoration:line-through}.check{width:21px;height:21px;flex:0 0 21px;margin-top:2px;accent-color:var(--green)}.itembody{flex:1;min-width:0}.itemtitle{font-weight:650;overflow-wrap:anywhere}.meta{font-size:12px;color:var(--muted);margin-top:4px}.itemactions{display:flex;gap:5px;flex-wrap:wrap;margin-top:9px}.pill{display:inline-block;background:var(--green2);color:#24583f;border-radius:999px;padding:3px 8px;font-size:11px;font-weight:700}.empty{border:1px dashed #cdd8d0;border-radius:12px;padding:18px;text-align:center;color:var(--muted);font-size:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:13px}.stat{background:#e6eee8;border-radius:13px;padding:12px}.stat strong{display:block;font-size:22px}.stat span{font-size:11px;color:#586a60}
+.sectionhead{display:flex;justify-content:space-between;align-items:center;gap:8px}.sectionhead h2{margin:0}.hide{display:none!important}.hint{font-size:12px;color:var(--muted);margin-top:10px}.footer{color:var(--muted);font-size:12px;text-align:center;padding:12px 4px}.notice{background:#fff8df;border:1px solid #f0e2a8;border-radius:12px;padding:12px;font-size:13px;margin-bottom:13px}
+@media(min-width:700px){header{padding:30px 24px 22px}h1{font-size:34px}main{padding:22px 20px}.two{display:grid;grid-template-columns:1fr 1fr;gap:13px}.two .card{margin-bottom:13px}}
+@media(max-width:430px){.formgrid{grid-template-columns:1fr}.formgrid .full{grid-column:auto}.row.mobile-stack{align-items:stretch;flex-direction:column}.btn{width:100%}.datebar{align-items:flex-start;flex-direction:column;gap:2px}.card{padding:14px}}
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <div class="eyebrow">Персональная система</div>
+  <h1>Мой штаб</h1>
+  <p>Работа, задачи и цели — в одном месте.</p>
+</div></header>
+<main>
+  <div class="datebar"><span id="todayDate"></span><span id="saveStatus">Данные хранятся на этом устройстве</span></div>
+  <div class="stats">
+    <div class="stat"><strong id="statTasks">0</strong><span>задач на сегодня</span></div>
+    <div class="stat"><strong id="statDone">0</strong><span>выполнено</span></div>
+    <div class="stat"><strong id="statEntries">0</strong><span>записей в журнале</span></div>
+  </div>
+  <nav class="tabs" aria-label="Разделы">
+    <button class="tab active" data-tab="tasks">Сегодня</button>
+    <button class="tab" data-tab="work">Работа</button>
+    <button class="tab" data-tab="goals">Мои цели</button>
+  </nav>
+
+  <section id="panel-tasks">
+    <div class="card">
+      <h2>Задачи на сегодня</h2>
+      <p class="sub">Добавляй дела, выбирай приоритет и отмечай выполненное.</p>
+      <form id="taskForm">
+        <div class="formgrid">
+          <input id="taskTitle" class="full" required maxlength="180" placeholder="Например: уточнить поставку плитки">
+          <select id="taskPriority" aria-label="Приоритет"><option value="Высокий">Высокий приоритет</option><option value="Обычный" selected>Обычный</option><option value="Низкий">Низкий</option></select>
+          <input id="taskDue" type="date" aria-label="Срок (необязательно)">
+          <button class="btn full" type="submit">+ Добавить задачу</button>
+        </div>
+      </form>
+      <div id="taskList" class="tasklist"></div>
+    </div>
+  </section>
+
+  <section id="panel-work" class="hide">
+    <div class="card">
+      <h2>Рабочий журнал</h2>
+      <p class="sub">Фиксируй выполненные работы, объёмы, материалы и вопросы по объекту.</p>
+      <form id="workForm">
+        <div class="formgrid">
+          <input id="workObject" placeholder="Объект / помещение" maxlength="120">
+          <input id="workDate" type="date" required>
+          <input id="workTitle" class="full" placeholder="Какие работы выполнены?" maxlength="180" required>
+          <input id="workVolume" placeholder="Объём и единица (напр. 24 м²)" maxlength="100">
+          <input id="workMaterial" placeholder="Материалы / расход" maxlength="140">
+          <textarea id="workNotes" class="full" placeholder="Проблемы, поставки, что сделать дальше…"></textarea>
+          <button class="btn full" type="submit">+ Сохранить запись</button>
+        </div>
+      </form>
+      <div id="workList" class="entrylist"></div>
+    </div>
+  </section>
+
+  <section id="panel-goals" class="hide">
+    <div class="card">
+      <h2>Мои цели</h2>
+      <p class="sub">Разбей большие планы на понятные ориентиры.</p>
+      <form id="goalForm">
+        <div class="formgrid">
+          <input id="goalTitle" class="full" required maxlength="180" placeholder="Например: научиться создавать приложения">
+          <input id="goalTarget" placeholder="Целевой результат" maxlength="100">
+          <input id="goalDate" type="date" aria-label="Дата цели (необязательно)">
+          <button class="btn full" type="submit">+ Добавить цель</button>
+        </div>
+      </form>
+      <div id="goalList" class="goallist"></div>
+    </div>
+  </section>
+
+  <div class="two">
+    <div class="card">
+      <h3>Резервная копия</h3>
+      <p class="sub">Сохрани данные в файл, чтобы перенести их на другое устройство или восстановить позже.</p>
+      <div class="row mobile-stack">
+        <button id="exportBtn" class="btn secondary">Экспортировать данные</button>
+        <label class="btn secondary" for="importFile" style="text-align:center;cursor:pointer">Импортировать</label>
+        <input id="importFile" class="hide" type="file" accept=".json,application/json">
+      </div>
+      <p class="hint">Импорт заменит текущие данные. Сначала сделай экспорт, если они тебе нужны.</p>
+    </div>
+    <div class="card">
+      <h3>Как пользоваться</h3>
+      <p class="sub">Начни с одной задачи и одной записи по работе. Приложение сохраняет изменения автоматически в браузере.</p>
+      <button id="clearBtn" class="btn danger">Очистить все данные</button>
+      <p class="hint">Очистка необратима, если у тебя нет резервной копии.</p>
+    </div>
+  </div>
+  <div class="footer">Мой штаб · версия 0.1 · локальное хранение данных</div>
+</main>
+<script>
+(function(){
+const KEY='moiShtab_v01';
+const $=id=>document.getElementById(id);
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+const newState=()=>({tasks:[],work:[],goals:[]});
+let state=newState();
+try{const saved=localStorage.getItem(KEY);if(saved){const parsed=JSON.parse(saved);state={tasks:Array.isArray(parsed.tasks)?parsed.tasks:[],work:Array.isArray(parsed.work)?parsed.work:[],goals:Array.isArray(parsed.goals)?parsed.goals:[]}}}catch(e){}
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const prettyDate=s=>{if(!s)return '';const d=new Date(s+'T12:00:00');return isNaN(d)?s:d.toLocaleDateString('ru-RU',{day:'numeric',month:'short',year:'numeric'})};
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state));$('saveStatus').textContent='Сохранено автоматически'}catch(e){$('saveStatus').textContent='Не удалось сохранить автоматически — сделай экспорт'}renderStats()}
+function renderStats(){const active=state.tasks.filter(t=>!t.done);$('statTasks').textContent=active.length;$('statDone').textContent=state.tasks.filter(t=>t.done).length;$('statEntries').textContent=state.work.length}
+function renderTasks(){
+ const box=$('taskList'); if(!state.tasks.length){box.innerHTML='<div class="empty">Пока нет задач. Добавь первую выше.</div>';return}
+ const priorityOrder={'Высокий':0,'Обычный':1,'Низкий':2};
+ const tasks=[...state.tasks].sort((a,b)=>Number(a.done)-Number(b.done)||(priorityOrder[a.priority]??1)-(priorityOrder[b.priority]??1));
+ box.innerHTML=tasks.map(t=>`<div class="item ${t.done?'done':''}">
+ <input class="check" type="checkbox" data-action="toggle-task" data-id="${esc(t.id)}" ${t.done?'checked':''} aria-label="Выполнено">
+ <div class="itembody"><div class="itemtitle">${esc(t.title)}</div><div class="meta"><span class="pill">${esc(t.priority||'Обычный')}</span>${t.due?' · Срок: '+esc(prettyDate(t.due)):''}</div>
+ <div class="itemactions"><button class="btn small danger" data-action="delete-task" data-id="${esc(t.id)}">Удалить</button></div></div></div>`).join('');
+}
+function renderWork(){
+ const box=$('workList'); if(!state.work.length){box.innerHTML='<div class="empty">Записей пока нет. Добавь выполненную работу и её объём.</div>';return}
+ box.innerHTML=[...state.work].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(w=>`<div class="item"><div class="itembody">
+ <div class="itemtitle">${esc(w.title)}</div><div class="meta">${esc(prettyDate(w.date))}${w.object?' · '+esc(w.object):''}</div>
+ ${w.volume?`<p style="margin:8px 0 0;font-size:14px"><b>Объём:</b> ${esc(w.volume)}</p>`:''}
+ ${w.material?`<p style="margin:4px 0 0;font-size:14px"><b>Материалы:</b> ${esc(w.material)}</p>`:''}
+ ${w.notes?`<p style="margin:4px 0 0;font-size:14px;white-space:pre-wrap">${esc(w.notes)}</p>`:''}
+ <div class="itemactions"><button class="btn small danger" data-action="delete-work" data-id="${esc(w.id)}">Удалить запись</button></div>
+ </div></div>`).join('');
+}
+function renderGoals(){
+ const box=$('goalList');if(!state.goals.length){box.innerHTML='<div class="empty">Добавь цель, к которой хочешь двигаться.</div>';return}
+ box.innerHTML=state.goals.map(g=>`<div class="item ${g.done?'done':''}"><input class="check" type="checkbox" data-action="toggle-goal" data-id="${esc(g.id)}" ${g.done?'checked':''} aria-label="Цель достигнута"><div class="itembody"><div class="itemtitle">${esc(g.title)}</div><div class="meta">${g.target?'Результат: '+esc(g.target):'Результат пока не указан'}${g.date?' · До '+esc(prettyDate(g.date)):''}</div><div class="itemactions"><button class="btn small danger" data-action="delete-goal" data-id="${esc(g.id)}">Удалить</button></div></div></div>`).join('');
+}
+function render(){renderTasks();renderWork();renderGoals();renderStats()}
+document.querySelectorAll('.tab').forEach(btn=>btn.addEventListener('click',()=>{
+ document.querySelectorAll('.tab').forEach(b=>b.classList.toggle('active',b===btn));
+ ['tasks','work','goals'].forEach(tab=>$('panel-'+tab).classList.toggle('hide',tab!==btn.dataset.tab));
+}));
+$('todayDate').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+$('workDate').value=today();
+$('taskForm').addEventListener('submit',e=>{e.preventDefault();const title=$('taskTitle').value.trim();if(!title)return;state.tasks.push({id:uid(),title,priority:$('taskPriority').value,due:$('taskDue').value,done:false,created:today()});$('taskTitle').value='';$('taskDue').value='';save();render()});
+$('workForm').addEventListener('submit',e=>{e.preventDefault();const title=$('workTitle').value.trim();if(!title)return;state.work.push({id:uid(),date:$('workDate').value||today(),object:$('workObject').value.trim(),title,volume:$('workVolume').value.trim(),material:$('workMaterial').value.trim(),notes:$('workNotes').value.trim()});['workTitle','workObject','workVolume','workMaterial','workNotes'].forEach(id=>$(id).value='');$('workDate').value=today();save();render()});
+$('goalForm').addEventListener('submit',e=>{e.preventDefault();const title=$('goalTitle').value.trim();if(!title)return;state.goals.push({id:uid(),title,target:$('goalTarget').value.trim(),date:$('goalDate').value,done:false});['goalTitle','goalTarget','goalDate'].forEach(id=>$(id).value='');save();render()});
+document.addEventListener('click',e=>{const el=e.target.closest('[data-action]');if(!el)return;const {action,id}=el.dataset;if(!action.startsWith('delete-'))return;if(!confirm('Удалить эту запись?'))return;const key=action==='delete-task'?'tasks':action==='delete-work'?'work':'goals';state[key]=state[key].filter(x=>x.id!==id);save();render()});
+document.addEventListener('change',e=>{const el=e.target.closest('[data-action^="toggle-"]');if(!el)return;const {action,id}=el.dataset;const key=action==='toggle-task'?'tasks':'goals';const item=state[key].find(x=>x.id===id);if(item)item.done=el.checked;save();render()});
+$('exportBtn').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({app:'Мой штаб',version:1,exportedAt:new Date().toISOString(),data:state},null,2)],{type:'application/json'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='moi-shtab-backup-'+today()+'.json';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)});
+$('importFile').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());const data=parsed.data||parsed;if(!Array.isArray(data.tasks)||!Array.isArray(data.work)||!Array.isArray(data.goals))throw new Error('bad format');if(!confirm('Импорт заменит все текущие записи. Продолжить?'))return;state={tasks:data.tasks,work:data.work,goals:data.goals};save();render();alert('Данные импортированы.')}catch(err){alert('Не удалось импортировать файл. Выбери резервную копию «Мой штаб».')}finally{e.target.value=''}});
+$('clearBtn').addEventListener('click',()=>{if(!confirm('Точно удалить ВСЕ задачи, записи и цели? Это действие нельзя отменить без резервной копии.'))return;state=newState();save();render()});
+render();
+})();
+</script>
+</body>
+</html>
