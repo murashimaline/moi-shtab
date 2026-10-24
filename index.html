@@ -657,8 +657,12 @@ document.addEventListener('keydown',e=>{
  }
 });
 document.addEventListener('focusin',e=>{if(mobileNavOpen&&!mobileNav.contains(e.target))mobileNavClose.focus({preventScroll:true})});
-if(mobileMenuMedia.addEventListener)mobileMenuMedia.addEventListener('change',()=>setMobileNav(false));
-else mobileMenuMedia.addListener(()=>setMobileNav(false));
+function handleMobileViewportChange(){
+ setMobileNav(false);
+ if(!mobileMenuMedia.matches)mobileNav.querySelectorAll('details').forEach(d=>{d.open=false});
+}
+if(mobileMenuMedia.addEventListener)mobileMenuMedia.addEventListener('change',handleMobileViewportChange);
+else mobileMenuMedia.addListener(handleMobileViewportChange);
 window.addEventListener('pagehide',()=>setMobileNav(false));
 setMobileNav(false);
 
