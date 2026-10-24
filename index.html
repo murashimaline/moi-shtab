@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0876bc">
+<title>Мой штаб 0.8.1 — мобильное меню</title>
+<style>
+:root{--bg:#f3f5f9;--panel:#fff;--ink:#172033;--muted:#647087;--line:#dce2ec;--accent:#2457c5;--accent2:#e9efff;--danger:#b42318;--ok:#18794e;--warn:#a15c00}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
+header{background:#18243a;color:#fff;padding:20px max(16px,calc((100vw - 1180px)/2));}
+header h1{margin:0;font-size:25px}header p{margin:5px 0 0;color:#c7d1e3}
+main{max-width:1180px;margin:auto;padding:16px}
+nav{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 16px}
+nav button{border:1px solid var(--line);background:#fff;border-radius:10px;padding:10px 13px;cursor:pointer;color:var(--ink);font-weight:650}
+nav button.active{background:var(--accent);border-color:var(--accent);color:#fff}
+section.page{display:none}section.page.active{display:block}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;box-shadow:0 2px 8px #18243a08}
+h2{margin:0 0 12px;font-size:20px}h3{margin:0 0 8px;font-size:16px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+label{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:13px}
+input,select,textarea{width:100%;min-width:0;border:1px solid #cbd3e0;border-radius:8px;padding:10px;background:#fff;color:var(--ink);font:inherit}
+textarea{min-height:76px;resize:vertical}
+button{font:inherit}
+.btn{border:0;border-radius:8px;padding:10px 13px;background:var(--accent);color:#fff;font-weight:650;cursor:pointer}
+.btn.secondary{background:var(--accent2);color:var(--accent)}.btn.danger{background:#fff0ee;color:var(--danger);border:1px solid #ffd0ca}.btn.small{padding:6px 9px;font-size:13px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+table{width:100%;border-collapse:collapse;font-size:14px}th,td{text-align:left;padding:9px;border-bottom:1px solid var(--line);vertical-align:top}th{color:var(--muted);font-weight:650;background:#f8f9fc}
+.table-wrap{overflow:auto} .empty{color:var(--muted);padding:14px 0}
+.tag{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:700;background:#eef1f6;color:#475467}
+.tag.ok{background:#e6f6ed;color:var(--ok)}.tag.warn{background:#fff2d8;color:var(--warn)}.tag.bad{background:#ffebe8;color:var(--danger)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.stat{border:1px solid var(--line);border-radius:12px;padding:12px;background:#fafbfe}.stat span{display:block;color:var(--muted);font-size:12px}.stat strong{font-size:22px}
+.notice{padding:10px 12px;background:#fff8e6;border:1px solid #f2dfaa;border-radius:9px;color:#6b4a00;font-size:13px}
+
+:root{--bg:#f2f5fb;--panel:#fff;--ink:#17233d;--muted:#65728a;--line:#e0e7f1;--accent:#315be8;--accent2:#edf1ff;--danger:#b42318;--ok:#16845b;--warn:#a15c00}
+body{background:radial-gradient(ellipse at 10% 0%,#e7edff 0,transparent 38%),var(--bg);color:var(--ink)}
+header{background:linear-gradient(115deg,#152344,#263e78 72%,#315be8);padding:23px max(16px,calc((100vw - 1180px)/2));box-shadow:0 8px 28px #162b5830}
+.header-inner{max-width:1180px;margin:auto;display:flex;align-items:center;justify-content:space-between;gap:18px}
+header h1{font-size:30px;letter-spacing:-.7px}header p{color:#d6e0ff}.eyebrow{font-size:10px;letter-spacing:1.8px;font-weight:800;color:#aebfff;margin-bottom:4px}.version-pill{font-size:12px;vertical-align:middle;background:#ffffff20;border:1px solid #ffffff40;padding:4px 8px;border-radius:20px;letter-spacing:0}.header-chip{border:1px solid #ffffff35;background:#ffffff12;padding:9px 12px;border-radius:12px;color:#e6ebff;font-size:12px;white-space:nowrap}.live-dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#56e0a3;margin-right:5px}
+main{padding-top:22px}
+nav{position:sticky;top:6px;z-index:5;padding:7px;background:#ffffffdc;backdrop-filter:blur(12px);border:1px solid #e0e7f1;border-radius:15px;box-shadow:0 5px 20px #18243a0a}
+nav button{border-color:transparent;background:transparent;border-radius:9px;transition:background .15s,transform .15s}nav button:hover{background:#f0f3fb}nav button.active{background:linear-gradient(135deg,#315be8,#5278ff);box-shadow:0 4px 12px #315be833}
+.panel{border-color:#e2e8f2;border-radius:17px;padding:19px;box-shadow:0 5px 22px #1c315b08;margin-bottom:16px}
+h2{font-size:21px;letter-spacing:-.3px}h3{font-size:16px}
+.btn{border-radius:10px;background:linear-gradient(135deg,#315be8,#456df3);box-shadow:0 3px 8px #315be81a}.btn.secondary{box-shadow:none}.btn.danger{box-shadow:none}
+input,select,textarea{border-color:#d7dfeb;border-radius:10px;padding:11px}input:focus,select:focus,textarea:focus{outline:3px solid #315be81c;border-color:#315be8}
+.stat{background:linear-gradient(145deg,#fff,#f7f9ff);border-color:#e0e7f3;border-radius:15px;padding:16px;position:relative;overflow:hidden}.stat:after{content:"";position:absolute;width:65px;height:65px;border-radius:50%;right:-24px;top:-25px;background:#315be80c}.stat strong{font-size:25px;letter-spacing:-.6px}
+.report{background:linear-gradient(135deg,#f8faff,#f2f5ff);border-color:#dce5fb;line-height:1.7}
+.analytics-grid{display:grid;grid-template-columns:1.4fr 1fr;gap:14px}.chart{display:flex;align-items:flex-end;gap:10px;min-height:190px;padding:18px 8px 4px;border-bottom:1px solid var(--line)}.chart-col{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:7px;height:175px;justify-content:flex-end}.chart-bar{width:min(34px,75%);min-height:3px;border-radius:8px 8px 3px 3px;background:linear-gradient(180deg,#6e8bff,#315be8);box-shadow:0 3px 8px #315be822}.chart-label{font-size:10px;color:var(--muted);white-space:nowrap}.chart-value{font-size:10px;font-weight:750;color:#34415c}.mini-list{display:grid;gap:10px}.mini-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;background:#f7f9fd;border-radius:10px}.mini-row strong{font-size:13px}.section-kicker{font-size:11px;font-weight:800;letter-spacing:1px;color:#77849b;text-transform:uppercase;margin-bottom:8px}
+@media(max-width:760px){.analytics-grid{grid-template-columns:1fr}.header-inner{align-items:flex-start}.header-chip{display:none}}
+
+footer{max-width:1180px;margin:auto;padding:0 16px 24px;color:var(--muted);font-size:12px}
+.report{white-space:pre-wrap;background:#f8f9fc;border:1px solid var(--line);padding:14px;border-radius:10px;min-height:100px}
+@media(max-width:760px){.grid,.fields{grid-template-columns:1fr 1fr}.stats{grid-template-columns:repeat(2,minmax(0,1fr))}main{padding:10px}.panel{padding:12px}header{padding:16px}table{min-width:650px}}
+@media(max-width:440px){.fields,.grid{grid-template-columns:1fr}nav button{flex:1 1 42%;font-size:13px;padding:9px}}
+.brand-area{display:flex;align-items:center;gap:16px}.brand-mark{width:76px;height:76px;flex:none}.substep-editor{border:1px solid var(--line);padding:12px;border-radius:12px;margin:10px 0;background:#f8faff}.substep-editor .fields{grid-template-columns:repeat(3,minmax(0,1fr))}.substep-title{display:flex;justify-content:space-between;align-items:center;gap:8px}.substep-list{font-size:12px;line-height:1.7}.analytics-details{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}.analytics-details .panel{margin:0}@media(max-width:760px){.substep-editor .fields,.analytics-details{grid-template-columns:1fr}.brand-mark{width:54px;height:54px}}
+
+/* Чертёж: голубой фон и тонкая белая разметка на всех страницах */
+body{background:linear-gradient(150deg,#0566a7 0%,#0b81c9 51%,#1371bb 100%);min-height:100vh}
+body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background-image:url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22560%22%20height%3D%22420%22%20viewBox%3D%220%200%20560%20420%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23fff%22%20stroke-width%3D%221.2%22%20opacity%3D%220.65%22%3E%3Cpath%20d%3D%22M26%2028H532M26%2075H532M26%20122H532M26%20169H532M26%20216H532M26%20263H532M26%20310H532M26%20357H532M55%207V412M102%207V412M149%207V412M196%207V412M243%207V412M290%207V412M337%207V412M384%207V412M431%207V412M478%207V412M525%207V412%22%20opacity%3D%22.2%22%2F%3E%3Cpath%20d%3D%22M65%2095h170v92h65v105H65zM74%20104h152v74h65v105H74zM130%20104v65m6-65v65M235%20133h56m-56%206h56M155%20187v96m8-96v96M299%2098h180v152h-82v-64h-98zM309%20108h160v132h-62v-64h-98z%22%20stroke-width%3D%222.1%22%2F%3E%3Cpath%20d%3D%22M65%2080H235m-170-6v12m170-12v12m-170-6%207-4v8zm170%200-7-4v8zM299%2083H479m-180-7v14m180-14v14M65%20310h226m-226-8v16m226-16v16M50%2095v197m-8-197h16m-8%20197h16%22%2F%3E%3Ccircle%20cx%3D%22362%22%20cy%3D%22310%22%20r%3D%2238%22%2F%3E%3Ccircle%20cx%3D%22362%22%20cy%3D%22310%22%20r%3D%2226%22%2F%3E%3Cpath%20d%3D%22M322%20310h80m-40-40v80m-12-65%2012-18%2012%2018M430%20307l28-28m-28%200%2028%2028M433%20330h54%22%2F%3E%3C%2Fg%3E%3Cg%20fill%3D%22%23fff%22%20opacity%3D%22.62%22%20font-family%3D%22monospace%22%20font-size%3D%2211%22%3E%3Ctext%20x%3D%22127%22%20y%3D%2273%22%3E1700%3C%2Ftext%3E%3Ctext%20x%3D%22366%22%20y%3D%2277%22%3E1800%3C%2Ftext%3E%3Ctext%20x%3D%22173%22%20y%3D%22327%22%3E2260%3C%2Ftext%3E%3Ctext%20x%3D%2226%22%20y%3D%22207%22%20transform%3D%22rotate%28-90%2026%20207%29%22%3E1970%3C%2Ftext%3E%3Ctext%20x%3D%22352%22%20y%3D%22367%22%3ER380%3C%2Ftext%3E%3Ctext%20x%3D%22446%22%20y%3D%22347%22%3EA-A%3C%2Ftext%3E%3Ctext%20x%3D%22458%22%20y%3D%2222%22%3EPLAN%2001%3C%2Ftext%3E%3C%2Fg%3E%3C%2Fsvg%3E");background-repeat:repeat;background-size:560px 420px;opacity:.28}
+header,main,footer{position:relative;z-index:1}
+header{background:linear-gradient(120deg,#083566ec,#07549ce8 68%,#067bc4ef);border-bottom:1px solid #ffffff35}
+nav{background:#f8fbffed;box-shadow:0 7px 26px #05254a26}
+.panel{background:#fffffff5;box-shadow:0 8px 24px #073b6a2a}
+footer{color:#edf8ff}
+.stage-editor-box{padding:14px 14px 10px;background:#f3f8ff;border:1px solid #c6d9ef;border-radius:14px;margin:14px 0}
+.stage-editor-box .substep-editor{background:#fff}
+.stage-add-actions{justify-content:flex-start;border-top:1px dashed #bfd1e8;padding-top:12px}
+.muted-small{font-size:12px;color:var(--muted);line-height:1.5}
+.finance-stats{grid-template-columns:repeat(3,minmax(0,1fr));margin:14px 0}
+.finance-stats .stat strong{font-size:21px;overflow-wrap:anywhere}
+.finance-home-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.finance-home-grid > .panel{margin:0 0 14px}
+.finance-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.finance-bars{display:grid;gap:13px;padding:8px 0}
+.finance-bar-track{height:12px;border-radius:20px;background:#dbe9f7;overflow:hidden;margin-top:4px}
+.finance-bar-fill{height:100%;border-radius:20px;background:linear-gradient(90deg,#2594dd,#225dd2)}
+.finance-bar-top{display:flex;justify-content:space-between;gap:14px;font-size:12px;align-items:center}
+.finance-bar-top b{white-space:nowrap}
+.receipt-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.receipt-chip{display:flex;align-items:center;gap:7px;border:1px solid #d3e3f0;background:#f4faff;padding:7px 9px;border-radius:9px;font-size:12px}
+.receipt-chip a{color:#2457c5;text-decoration:underline;overflow-wrap:anywhere;max-width:280px}
+.receipt-list .btn{padding:3px 7px}
+@media(max-width:820px){.finance-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.finance-home-grid{grid-template-columns:1fr}}
+@media(max-width:480px){.finance-stats{grid-template-columns:1fr 1fr}.finance-stats .stat strong{font-size:17px}}
+
+/* Раздел планирования 0.7 */
+.schedule-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:16px 0}
+.schedule-metric{background:#f4f8fc;border:1px solid #dce6f0;border-radius:13px;padding:11px 13px;border-left:5px solid #9aacc4}
+.schedule-metric span{display:block;font-size:11px;color:#53627a}.schedule-metric strong{display:block;font-size:24px;line-height:1.2;margin-top:5px}
+.schedule-metric.late{background:#fff1f0;border-left-color:#d63b42}.schedule-metric.ontime{background:#eaf9f0;border-left-color:#249365}.schedule-metric.planned{background:#fff7df;border-left-color:#dfad22}
+.schedule-cards{display:grid;gap:12px}.schedule-card{border:1px solid #e1e9f3;border-left:6px solid #a2b6ca;border-radius:14px;background:#fff;padding:14px 17px;box-shadow:0 2px 9px #15365707}
+.schedule-card.status-late{border-left-color:#d63b42}.schedule-card.status-ontime{border-left-color:#249365}.schedule-card.status-planned{border-left-color:#dfad22}
+.schedule-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}.schedule-card-head h3{font-size:17px;margin:1px 0 3px}.schedule-card-kicker{text-transform:uppercase;letter-spacing:1px;font-size:10px;font-weight:800;color:#7185a0}.schedule-card-sub,.schedule-note{font-size:12px;color:#5c6e88;margin:3px 0}.schedule-card-actions{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.schedule-badge{padding:5px 9px;border-radius:999px;font-size:11px;font-weight:800;white-space:nowrap}.schedule-badge.late{background:#fbe0e2;color:#a81d2c}.schedule-badge.ontime{background:#d8f6e5;color:#126841}.schedule-badge.planned{background:#ffefc6;color:#815b00}
+.schedule-card-stages{margin-top:13px;display:grid;gap:7px}.schedule-stage-row{display:flex;gap:10px;align-items:center;padding:8px 10px;background:#f6f9fd;border-radius:10px}.schedule-stage-index{border-radius:7px;background:#e1eaf6;color:#47739e;min-width:27px;height:27px;display:grid;place-items:center;font-size:12px;font-weight:800}.schedule-stage-row>div{flex:1;min-width:0}.schedule-stage-row strong{font-size:13px;display:block}.schedule-stage-row small{font-size:11px;color:#65728a;display:block}
+.gantt-heading{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.gantt-heading h3{margin:0}.gantt-heading p{margin:4px 0}
+.gantt-legend{display:flex;align-items:center;flex-wrap:wrap;gap:16px;padding:10px 0 15px}.gantt-legend span{display:inline-flex;align-items:center;gap:7px;font-size:12px;color:#526079;font-weight:600}.legend-dot{height:11px;width:21px;display:inline-block;border-radius:4px}.legend-dot.late{background:#d63b42}.legend-dot.ontime{background:#249365}.legend-dot.planned{background:#e4b538}.legend-today{height:15px;width:2px;background:#2255bd;display:inline-block}
+.gantt-controls{display:flex;gap:10px;align-items:end;flex-wrap:wrap;margin-bottom:14px}.gantt-controls label{font-size:11px;min-width:155px}.gantt-controls input,.gantt-controls select{font-size:12px;padding:8px}.gantt-range{margin-left:auto;padding:8px 10px;font-size:12px;font-weight:700;color:#466482;background:#eef5fc;border-radius:8px}.gantt-tip{margin:10px 0 0}
+.gantt-scroll{overflow:auto;border:1px solid #dce8f2;border-radius:12px;max-height:640px;position:relative;background:#fff}.gantt-board{width:max-content;min-width:100%}.gantt-head,.gantt-row{display:flex;width:max-content;min-width:100%}.gantt-head{position:sticky;top:0;z-index:3;background:#e8f3ff}.gantt-left-head,.gantt-label{flex:0 0 270px;width:270px;position:sticky;left:0;z-index:2;border-right:1px solid #dae6f2}.gantt-left-head{background:#dcecfb;padding:14px 12px;font-size:12px;font-weight:800;color:#234c75}.gantt-dates{display:flex;background:#dfedfb}.gantt-day{flex:0 0 var(--day-cell);width:var(--day-cell);display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:1px solid #d0e2f2;padding:5px 0;color:#3c587b;font-size:10px}.gantt-day small{font-size:12px;font-weight:800}.gantt-day span{font-size:9px}.gantt-day.weekend{background:#ccdef0}.gantt-day.today{background:#accff6;color:#174882}
+.gantt-row{height:51px;border-bottom:1px solid #e6edf5}.gantt-row:last-child{border-bottom:0}.gantt-label{background:#fff;display:flex;flex-direction:column;justify-content:center;padding:5px 10px;overflow:hidden}.gantt-row.child .gantt-label{background:#f6faff;padding-left:22px}.gantt-row.status-late .gantt-label{border-left:4px solid #d63b42}.gantt-row.status-ontime .gantt-label{border-left:4px solid #249365}.gantt-row.status-planned .gantt-label{border-left:4px solid #e4b538}.gantt-label b{font-size:12px;text-overflow:ellipsis;overflow:hidden;white-space:nowrap}.gantt-label small{font-size:10px;color:#72809a;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gantt-track{position:relative;flex:none;background:repeating-linear-gradient(90deg,transparent 0,transparent calc(var(--day-cell) - 1px),#e7edf4 calc(var(--day-cell) - 1px),#e7edf4 var(--day-cell)),#fafcff}.gantt-row.child .gantt-track{background-color:#f3f8ff}.gantt-bar{position:absolute;top:12px;height:25px;border-radius:6px;min-width:3px;box-shadow:0 1px 5px #152f4f30;overflow:hidden;display:flex;align-items:center;justify-content:center}.gantt-bar.late{background:linear-gradient(90deg,#e26063,#bc2732)}.gantt-bar.ontime{background:linear-gradient(90deg,#4cc68f,#198759)}.gantt-bar.planned{background:linear-gradient(90deg,#f5d675,#dfad22)}.gantt-bar span{font-size:10px;font-weight:800;color:#fff;white-space:nowrap;max-width:100%;text-overflow:ellipsis;overflow:hidden}.gantt-bar.planned span{color:#775100}.gantt-today{position:absolute;top:0;bottom:0;border-left:2px dashed #245bc6;opacity:.85;pointer-events:none;z-index:1}
+@media(max-width:900px){.schedule-summary{grid-template-columns:repeat(3,minmax(0,1fr))}.gantt-range{margin-left:0}}
+@media(max-width:550px){.schedule-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.gantt-heading button{width:100%}.gantt-left-head,.gantt-label{flex-basis:195px;width:195px}.schedule-card-actions{width:100%}}
+
+/* Единый финансовый раздел: подотчётные средства и кассовые операции */
+.cash-hero{background:linear-gradient(115deg,#eff8ff 0%,#f9fcff 100%);border:1px solid #c6deef}
+.cash-stats{grid-template-columns:repeat(4,minmax(0,1fr));margin:17px 0 11px}
+.cash-balance-strip{display:flex;flex-wrap:wrap;gap:18px;border-radius:13px;background:#e4f1fe;border:1px solid #c7dff8;padding:14px 17px}
+.cash-balance-strip>div{flex:1;min-width:190px}
+.cash-balance-strip small{display:block;color:#4e6885;font-size:12px}
+.cash-balance-strip strong{display:block;margin-top:4px;font-size:23px;color:#0c558c}
+.cash-balance-strip .cash-negative,.cash-negative{color:#b42f39!important;font-weight:750}
+.cash-positive{color:#14734c;font-weight:750}
+.finance-dual{display:grid;grid-template-columns:1fr 1.15fr;gap:16px;align-items:start}
+.finance-dual .panel{min-width:0;height:100%}
+.section-separator{margin:25px 0 14px;padding:12px 2px 7px;border-bottom:2px solid #b9d3ea}
+.section-separator h2{margin:0 0 3px;font-size:21px}
+.section-separator p{margin:4px 0 7px}
+@media(max-width:950px){.finance-dual{grid-template-columns:1fr}.cash-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:540px){.cash-stats{grid-template-columns:1fr 1fr}.cash-stats strong{font-size:16px}}
+
+/* 0.8.1: боковая навигация только для телефона */
+.mobile-menu-toggle,.mobile-nav-heading,.mobile-nav-overlay{display:none}
+@media(max-width:760px){
+  header{position:sticky;top:0;z-index:30;padding:10px 13px;box-shadow:0 3px 14px #092a5360}
+  .header-inner{align-items:center;justify-content:flex-start;gap:10px}
+  .brand-area{min-width:0;gap:10px}
+  .brand-mark{width:43px;height:43px}
+  header h1{font-size:21px;white-space:nowrap}
+  header p{font-size:11px;margin-top:2px;line-height:1.25}
+  .eyebrow{font-size:8px;letter-spacing:.8px}
+  .version-pill{font-size:9px;padding:3px 6px}
+  .mobile-menu-toggle{display:grid;place-items:center;flex:0 0 44px;width:44px;height:44px;border:1px solid #ffffff6e;background:#ffffff17;color:#fff;border-radius:12px;cursor:pointer;touch-action:manipulation}
+  .mobile-menu-toggle:focus-visible,.mobile-nav-close:focus-visible{outline:3px solid #ffe38b;outline-offset:2px}
+  .hamburger-lines{display:flex;flex-direction:column;gap:5px}
+  .hamburger-lines i{display:block;background:currentColor;width:23px;height:2.5px;border-radius:4px}
+  main{position:static;z-index:auto;padding-top:12px}
+  .mobile-nav-overlay{position:fixed;inset:0;z-index:40;border:0;background:#031b37a8;cursor:pointer;backdrop-filter:blur(2px)}
+  #nav{position:fixed;inset:0 auto 0 0;z-index:50;display:flex;flex-direction:column;flex-wrap:nowrap;align-items:stretch;gap:5px;width:min(85vw,340px);max-width:100%;height:100dvh;min-height:100vh;min-height:100dvh;margin:0;padding:14px 13px 24px;background:#f7fbff;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;border:0;border-right:1px solid #c7d9eb;border-radius:0 18px 18px 0;box-shadow:8px 0 35px #021a3660;transform:translateX(-110%);visibility:hidden;pointer-events:none;transition:transform .22s ease,visibility .22s}
+  #nav .mobile-nav-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 5px 18px;border-bottom:1px solid #dbe6f3;margin-bottom:7px;color:#183b60}
+  .mobile-nav-heading b{display:block;font-size:20px;line-height:1.3}
+  .mobile-nav-heading span{display:block;color:#677e96;font-size:12px}
+  #nav .mobile-nav-close{display:grid;place-items:center;width:41px;height:41px;flex:0 0 41px;border:1px solid #d3e0f0;background:#fff;color:#31516e;font-size:30px;line-height:1;border-radius:11px;padding:0;cursor:pointer}
+  #nav button[data-page]{display:block;flex:0 0 auto;width:100%;min-height:44px;text-align:left;border:1px solid transparent;border-radius:11px;padding:11px 14px;font-size:15px;box-shadow:none}
+  #nav button[data-page].active{border-color:#496cf5;box-shadow:0 4px 12px #315be82e}
+  body.mobile-nav-open{overflow:hidden}
+  body.mobile-nav-open .mobile-nav-overlay{display:block}
+  body.mobile-nav-open #nav{transform:translateX(0);visibility:visible;pointer-events:auto}
+}
+@media(prefers-reduced-motion:reduce){#nav{transition:none!important}}
+</style>
+</head>
+<body>
+<header><div class="header-inner"><button type="button" id="mobileMenuToggle" class="mobile-menu-toggle" aria-label="Открыть меню разделов" aria-controls="nav" aria-expanded="false"><span class="hamburger-lines" aria-hidden="true"><i></i><i></i><i></i></span></button><div class="brand-area"><svg class="brand-mark" viewBox="0 0 100 100" role="img" aria-label="Каска, нивелир и рулетка"><path d="M20 43Q20 19 49 16Q79 19 79 43L86 48L83 56H17L14 48Z" fill="none" stroke="white" stroke-width="5" stroke-linejoin="round"/><path d="M50 18V45M25 40H74" fill="none" stroke="white" stroke-width="4"/><path d="M32 67H67M50 67L34 93M50 67L66 93M50 67V92" stroke="white" stroke-width="4" stroke-linecap="round"/><rect x="38" y="60" width="24" height="10" rx="3" fill="none" stroke="white" stroke-width="3"/><circle cx="74" cy="77" r="13" fill="none" stroke="white" stroke-width="4"/><path d="M74 70V78H81" fill="none" stroke="white" stroke-width="3"/></svg><div><div class="eyebrow">ПАНЕЛЬ УПРАВЛЕНИЯ ОБЪЕКТАМИ</div><h1>Мой штаб <span class="version-pill">0.8.1</span></h1><p>Работы · команда · расходы · планирование</p></div></div><div class="header-chip"><span class="live-dot"></span> Локальные данные</div></div></header>
+<button type="button" id="mobileNavOverlay" class="mobile-nav-overlay" aria-label="Закрыть меню разделов" tabindex="-1"></button>
+<main>
+<nav id="nav" aria-label="Разделы приложения"><div class="mobile-nav-heading"><div><b>Мой штаб</b><span>Разделы приложения</span></div><button type="button" id="mobileNavClose" class="mobile-nav-close" aria-label="Закрыть меню">&times;</button></div>
+<button data-page="home" class="active">Главная</button><button data-page="objects">Объекты</button><button data-page="tasks">Задачи</button><button data-page="works">Журнал работ</button><button data-page="report">Отчёт за день</button><button data-page="schedule">График работ</button><button data-page="workers">Рабочие</button><button data-page="timesheet">Табель</button><button data-page="payroll">Зарплата</button><button data-page="finance">Финансы</button><button data-page="goals">Мои цели</button><button data-page="backup">Резервная копия</button>
+</nav><datalist id="staffSuggestions"></datalist>
+<section class="page active" id="page-home">
+<div class="panel"><div class="section-kicker">Сводка</div><h2>Сводная информация</h2><div class="stats" id="stats"></div></div>
+<div class="analytics-grid">
+ <div class="panel"><div class="section-kicker">Динамика</div><h3>Работы за последние 7 дней</h3><div id="workChart" class="chart"></div><p style="font-size:12px;color:var(--muted);margin-bottom:0">Количество записей в журнале по дням</p></div>
+ <div class="panel"><div class="section-kicker">Оперативная сводка</div><h3>Что происходит</h3><div id="analyticsSummary" class="mini-list"></div></div>
+</div>
+<div class="panel"><div class="section-kicker">Быстрые действия</div><h3>Перейти к работе</h3><div class="actions"><button class="btn" data-goto="works">+ Добавить работу</button><button class="btn" data-goto="schedule">+ План работ</button><button class="btn secondary" data-goto="timesheet">Заполнить табель</button><button class="btn secondary" data-goto="finance">Добавить расход</button><button class="btn secondary" data-goto="report">Составить отчёт</button></div></div>
+<div class="notice">Данные хранятся в браузере на этом устройстве и не синхронизируются автоматически между компьютером и телефоном. Регулярно создавайте резервную копию.</div>
+<div class="panel"><div class="section-kicker">Финансовый дашборд</div><div class="finance-heading"><h3>Финансы за текущий месяц</h3><button class="btn small secondary" type="button" data-goto="finance">Подробный финансовый отчёт →</button></div><div class="stats finance-stats" id="homeFinanceStats"></div><div id="homeFinanceCharts" class="finance-home-grid"></div></div>
+<div class="panel"><div class="section-kicker">Аналитика</div><h3>Объекты, финансы, материалы и команда</h3><div id="extraAnalytics" class="analytics-details"></div></div>
+</section>
+<section class="page" id="page-objects">
+<div class="panel"><h2>Объекты</h2><form id="objectForm"><input type="hidden" name="id"><div class="fields"><label>Название объекта *<input name="name" required placeholder="Например, ЖК Северный"></label><label>Адрес<input name="address" placeholder="Адрес или участок"></label><label>Ответственный<input name="manager" placeholder="ФИО"></label></div><label style="margin-top:10px">Примечание<textarea name="notes" placeholder="Особенности объекта"></textarea></label><div class="actions"><button class="btn">Сохранить объект</button><button type="button" class="btn secondary" onclick="resetForm('objectForm')">Очистить</button></div></form></div>
+<div class="panel"><h3>Список объектов</h3><div id="objectList"></div></div>
+</section>
+<section class="page" id="page-tasks">
+<div class="panel"><h2>Контроль задач</h2><form id="taskForm"><input type="hidden" name="id"><div class="fields"><label>Задача *<input name="title" required placeholder="Что нужно сделать"></label><label>Объект<select name="objectId" class="object-select"><option value="">Без объекта</option></select></label><label>Срок<input type="date" name="due"></label><label>Статус<select name="status"><option>Не начата</option><option>В работе</option><option>Выполнена</option></select></label><label>Ответственный<input name="assignee" list="staffSuggestions" autocomplete="off"></label></div><div class="actions"><button class="btn">Сохранить задачу</button><button type="button" class="btn secondary" onclick="resetForm('taskForm')">Очистить</button></div></form></div><div class="panel"><div id="taskList"></div></div>
+</section>
+<section class="page" id="page-works">
+<div class="panel"><h2>Журнал работ</h2><form id="workForm"><input type="hidden" name="id"><div class="fields"><label>Дата *<input type="date" name="date" required></label><label>Объект<select name="objectId" class="object-select"><option value="">Без объекта</option></select></label><label>Вид работ *<input name="title" required placeholder="Например, кладка стен"></label><label>Выполненный объём<input name="volume" placeholder="Например, 24 м²"></label><label>Материалы<input name="materials" placeholder="Материал, количество"></label><label>Работники из списка<select id="workWorkerPicker" multiple size="4" aria-label="Выберите работников"></select></label><label>Рабочих на объекте<input name="workersCount" type="number" min="0" step="1" placeholder="Количество людей"></label><label>Фотоотчёт<input name="photos" type="file" accept="image/*" multiple></label><label>Заметки<input name="notes" placeholder="Замечания, сложности"></label></div><div class="actions"><button class="btn">Сохранить запись</button><button type="button" class="btn secondary" onclick="resetForm('workForm')">Очистить</button></div></form></div><div class="panel"><h3>Записи</h3><div id="workList"></div></div>
+</section>
+<section class="page" id="page-report">
+<div class="panel"><h2>Отчёт за день</h2><div class="fields"><label>Дата отчёта<input id="reportDate" type="date"></label><label>Объект (необязательно)<select id="reportObject" class="object-select"><option value="">Все объекты</option></select></label></div><div class="actions"><button class="btn" id="makeReport">Сформировать отчёт</button><button class="btn" id="pdfReport">Сформировать PDF</button><button class="btn secondary" id="copyReport">Копировать текст</button></div></div><div class="panel"><h3>Готовый текст</h3><div id="reportText" class="report">Выберите дату и сформируйте отчёт.</div></div><div class="panel"><h3>Фотоотчёт за выбранную дату</h3><div id="reportPhotos" class="grid"></div></div></section>
+<section class="page" id="page-schedule">
+<div class="panel"><div class="section-kicker">Планирование</div><h2>График работ</h2>
+<p style="color:var(--muted);margin-top:-5px">Запланируйте этапы, стадии, сроки и ответственных. График сохраняется вместе с остальными данными приложения.</p>
+<form id="scheduleForm"><input type="hidden" name="id"><div class="fields">
+<label>Этап / вид работ *<input name="title" required placeholder="Например, монтаж перегородок"></label>
+<label>Объект<select name="objectId" class="object-select"><option value="">Без объекта</option></select></label>
+<label>Ответственный<input name="assignee" list="staffSuggestions" autocomplete="off" placeholder="ФИО / бригада"></label>
+<label>Начало *<input name="start" type="date" required></label>
+<label>Окончание *<input name="end" type="date" required></label>
+<label>Статус<select name="status"><option>Запланировано</option><option>В работе</option><option>Выполнено</option><option>Задержка</option></select></label>
+</div><label style="margin-top:10px">Примечание<textarea name="notes" placeholder="Зависимости, материалы, замечания"></textarea></label>
+<div class="stage-editor-box">
+  <div class="substep-title"><b>Стадии основного этапа</b><span class="muted-small">Отдельные сроки, ответственный и статус для каждой стадии</span></div>
+  <div id="substepsEditor"></div>
+  <div class="actions stage-add-actions"><button type="button" class="btn secondary" id="addSubstep">+ Добавить стадию</button></div>
+</div>
+<div class="actions"><button class="btn">Сохранить этап</button><button type="button" class="btn secondary" onclick="resetForm('scheduleForm')">Очистить</button></div></form></div>
+<div class="panel"><div class="section-kicker">План / факт</div><h3>Список этапов</h3><div id="scheduleList"></div></div>
+<div class="panel"><div class="section-kicker">Визуальное планирование</div><div class="gantt-heading"><div><h3>График исполнения · диаграмма Ганта</h3><p class="muted-small">Стадии отображаются отдельно; цвета показывают состояние по срокам.</p></div><button type="button" id="exportScheduleExcel" class="btn">Скачать график Excel (.xlsx)</button></div>
+<div id="scheduleSummary" class="schedule-summary"></div>
+<div class="gantt-legend"><span><i class="legend-dot late"></i>Задержки</span><span><i class="legend-dot ontime"></i>В срок / выполнено</span><span><i class="legend-dot planned"></i>Запланировано</span><span><i class="legend-today"></i>Сегодня</span></div>
+<div class="gantt-controls"><button type="button" class="btn secondary small" id="schedulePrev" title="Предыдущий период">← Назад</button><label>Начало шкалы<input type="date" id="scheduleViewStart"></label><label>Период<select id="scheduleViewDays"><option value="14">14 дней</option><option value="30" selected>30 дней</option><option value="60">60 дней</option><option value="90">90 дней</option></select></label><button type="button" class="btn secondary small" id="scheduleNext" title="Следующий период">Вперёд →</button><button type="button" class="btn secondary small" id="scheduleCurrent">К сегодня</button><span class="gantt-range" id="scheduleViewRange"></span></div>
+<div id="scheduleTimeline"></div>
+<p class="muted-small gantt-tip">Прокручивайте шкалу по горизонтали. В Excel сохраняются этапы, стадии, даты, ответственные и формулы с динамической цветовой маркировкой.</p></div>
+</section>
+<section class="page" id="page-workers">
+<div class="panel"><h2>Рабочие</h2><form id="workerForm"><input type="hidden" name="id"><div class="fields"><label>ФИО *<input name="name" required></label><label>Профессия<input name="trade" placeholder="Каменщик, монтажник..."></label><label>Ставка за смену, ₽<input name="rate" type="number" min="0" step="0.01" value="0"></label><label>Телефон (необязательно)<input name="phone" type="tel"></label></div><div class="actions"><button class="btn">Сохранить рабочего</button><button type="button" class="btn secondary" onclick="resetForm('workerForm')">Очистить</button></div></form></div><div class="panel"><div id="workerList"></div></div></section>
+<section class="page" id="page-timesheet">
+<div class="panel"><h2>Табель</h2><form id="attendanceForm"><input type="hidden" name="id"><div class="fields"><label>Дата *<input name="date" type="date" required></label><label>Рабочий *<select name="workerId" class="worker-select" required><option value="">Выберите рабочего</option></select></label><label>Объект<select name="objectId" class="object-select"><option value="">Без объекта</option></select></label><label>Статус<select name="status"><option value="Смена">Полная смена</option><option value="Половина смены">Половина смены</option><option value="Часы">По часам</option><option value="Отсутствовал">Отсутствовал</option></select></label><label>Часы<input name="hours" type="number" min="0" max="24" step="0.25" value="8"></label><label>Смены для расчёта зарплаты<input name="shifts" type="number" min="0" max="1" step="0.25" value="1"></label><label>Штраф, ₽<input name="fine" type="number" min="0" step="0.01" value="0" placeholder="0"></label><label>Удержание, ₽<input name="deduction" type="number" min="0" step="0.01" value="0" placeholder="0"></label><label>Основание штрафа / удержания<input name="adjustmentReason" placeholder="Причина, документ"></label><label>Примечание<input name="notes"></label></div><p class="notice">Суммы штрафов и удержаний в табеле автоматически вычитаются из расчётной зарплаты. Не дублируйте их операциями в разделе «Зарплата».</p><div class="actions"><button class="btn">Сохранить запись табеля</button><button type="button" class="btn secondary" onclick="resetForm('attendanceForm')">Очистить</button></div></form></div><div class="panel"><div class="actions"><button type="button" class="btn secondary" id="exportTimesheetExcel">Скачать табель Excel</button></div><div id="attendanceList"></div></div></section>
+<section class="page" id="page-payroll">
+<div class="panel"><h2>Зарплатная ведомость</h2><div class="fields"><label>Период с<input id="payFrom" type="date"></label><label>Период по<input id="payTo" type="date"></label></div><p class="notice">Начисление = ставка за смену × смены. Штрафы и удержания из табеля, а также отдельные операции уменьшают сумму к выплате. Авансы и выплаты учитываются как фактические денежные выплаты. Проверяйте законность и документальное основание любых удержаний.</p><form id="paymentForm"><input type="hidden" name="id"><div class="fields"><label>Дата *<input name="date" type="date" required></label><label>Рабочий *<select name="workerId" class="worker-select" required><option value="">Выберите рабочего</option></select></label><label>Тип операции<select name="kind"><option value="Аванс">Аванс</option><option value="Выплата">Выплата зарплаты</option><option value="Штраф">Штраф</option><option value="Удержание">Удержание</option></select></label><label>Сумма, ₽ *<input name="amount" type="number" min="0.01" step="0.01" required></label><label>Источник выплаты<select name="paymentSource" id="wagePaymentSource"><option value="other">Другие средства</option><option value="accountable">Подотчётные средства</option></select></label><label>Причина / основание<input name="notes" placeholder="Причина, документ, примечание"></label></div><div class="actions"><button class="btn" id="paymentSaveBtn">Сохранить операцию</button><button type="button" class="btn secondary" id="paymentReset">Очистить</button></div></form><div class="actions"><button class="btn secondary" id="refreshPayroll">Рассчитать ведомость</button></div></div><div class="panel"><div id="payrollList"></div></div><div class="actions"><button type="button" class="btn secondary" id="exportPayrollExcel">Скачать ведомость Excel</button></div><div class="panel"><h3>Операции по выплатам</h3><div id="paymentList"></div></div></section>
+<section class="page" id="page-finance">
+<div class="panel cash-hero">
+<div class="section-kicker">Подотчётные денежные средства</div><h2>Деньги от руководителя · поступления и расходы</h2>
+<p class="muted-small">Записывайте полученные от руководителя суммы, расходы и выплаты рабочим из подотчётных средств, а также возвраты. Подотчётные поступления не считаются выручкой.</p>
+<div class="stats cash-stats" id="accountableStats"></div>
+<div class="cash-balance-strip" id="accountableBalance"></div>
+</div>
+<div class="finance-dual">
+<div class="panel"><h3>Получить или вернуть подотчётные деньги</h3>
+<form id="accountableForm"><input type="hidden" name="id"><div class="fields">
+<label>Дата *<input name="date" type="date" required></label>
+<label>Операция<select name="kind"><option value="receipt">Поступление от руководителя</option><option value="return">Возврат руководителю</option></select></label>
+<label>Сумма, ₽ *<input name="amount" type="number" min="0.01" step="0.01" required></label>
+<label>От кого / кому<input name="source" placeholder="ФИО руководителя"></label>
+<label class="wide">Основание / комментарий<input name="notes" placeholder="Аванс на материалы, остаток по отчёту…"></label>
+</div><div class="actions"><button class="btn">Сохранить операцию</button><button type="button" class="btn secondary" onclick="resetForm('accountableForm')">Очистить</button></div></form>
+</div><div class="panel"><h3>Движение подотчётных средств</h3><div class="fields"><label>С<input type="date" id="cashFrom"></label><label>По<input type="date" id="cashTo"></label></div><div class="actions"><button type="button" class="btn secondary" id="cashApply">Обновить</button><button type="button" class="btn secondary" id="exportCashExcel">Excel: подотчётные средства</button></div><div id="cashLedger"></div></div>
+</div>
+<div class="section-separator"><h2>Расходы и чеки</h2><p class="muted-small">Укажите источник оплаты каждого расхода. Старые расходы и выплаты зарплаты без источника не уменьшают автоматически остаток подотчётных денег — их можно уточнить через «Изменить».</p></div>
+
+<div class="panel"><h3>Добавить расход</h3><form id="expenseForm"><input type="hidden" name="id"><div class="fields"><label>Дата *<input name="date" type="date" required></label><label>Объект<select name="objectId" class="object-select"><option value="">Без объекта</option></select></label><label>Категория<select name="category"><option>Материалы</option><option>Доставка</option><option>Инструмент</option><option>Аренда техники</option><option>Питание</option><option>Транспорт</option><option>Прочее</option></select></label><label>Сумма, ₽ *<input name="amount" type="number" min="0.01" step="0.01" required></label><label>Источник оплаты<select name="paymentSource" id="expensePaymentSource"><option value="accountable">Подотчётные средства</option><option value="other">Другие средства</option></select></label><label>Кому / магазин<input name="vendor" placeholder="Поставщик или получатель"></label><label>Комментарий<input name="notes" placeholder="Что оплачено"></label><label>Чеки (фото или PDF)<input name="receipts" id="expenseReceipts" type="file" accept="image/*,application/pdf,.pdf" multiple><small>Фото сжимаются для экономии места; PDF до 1,5 МБ каждый.</small></label></div><div id="existingReceipts" class="receipt-list"></div><p class="muted-small">Чеки сохраняются в браузере и входят в JSON-резервную копию. Большие файлы могут переполнить локальное хранилище.</p><div class="actions"><button class="btn">Сохранить расход</button><button type="button" class="btn secondary" onclick="resetForm('expenseForm')">Очистить</button></div></form></div><div class="panel"><h3>Журнал расходов и чеки</h3><div class="fields"><label>Показать с<input id="expenseFrom" type="date"></label><label>по<input id="expenseTo" type="date"></label></div><div class="actions"><button class="btn secondary" id="filterExpenses">Применить период</button><button type="button" class="btn secondary" id="exportExpensesExcel">Скачать расходы Excel</button></div><div id="expenseList"></div></div>
+<div class="section-separator"><h2>Финансовый анализ и отчёты</h2></div>
+
+<div class="panel">
+  <div class="section-kicker">Финансовый контроль</div><h2>Финансовый отчёт и анализ</h2>
+  <div class="fields"><label>Начало периода<input id="financeFrom" type="date"></label><label>Окончание периода<input id="financeTo" type="date"></label><label>Объект<select id="financeObject" class="object-select"><option value="">Все объекты</option></select></label></div>
+  <div class="actions"><button id="refreshFinance" class="btn" type="button">Сформировать отчёт</button><button id="exportFinanceExcel" class="btn secondary" type="button">Скачать отчёт Excel</button><button id="printFinance" class="btn secondary" type="button">Печать / PDF</button></div>
+  <p class="notice">Подотчётные деньги учитываются отдельно от доходов и не увеличивают расчётную прибыль. Отчёт показывает два отдельных показателя: результат по начисленной зарплате и денежный поток по фактическим выплатам. Штрафы и удержания — корректировки зарплаты, а не поступления денег. Выплаты зарплаты не распределяются автоматически по объектам.</p>
+</div>
+<div class="panel"><div class="section-kicker">Показатели за выбранный период</div><div id="financeStats" class="stats finance-stats"></div></div>
+<div class="finance-home-grid"><div class="panel"><h3>Структура затрат</h3><div id="financeStructure" class="finance-bars"></div></div><div class="panel"><h3>Расчёты по зарплате</h3><div id="financeSalaryBreakdown" class="mini-list"></div></div></div>
+<div class="panel"><h3>Финансы по объектам</h3><div id="financeByObjects"></div></div>
+<div class="panel"><h3>Поступления от заказчиков и прочие доходы</h3><form id="incomeForm"><input type="hidden" name="id"><div class="fields"><label>Дата *<input type="date" name="date" required></label><label>Объект<select name="objectId" class="object-select"><option value="">Без объекта</option></select></label><label>Сумма, ₽ *<input name="amount" type="number" min="0.01" step="0.01" required></label><label>От кого / источник<input name="source" placeholder="Заказчик, инвестор, прочее"></label><label>Назначение / комментарий<input name="notes" placeholder="Акт, аванс заказчика..."></label></div><div class="actions"><button class="btn">Сохранить поступление</button><button type="button" class="btn secondary" onclick="resetForm('incomeForm')">Очистить</button></div></form></div>
+<div class="panel"><h3>Журнал поступлений</h3><div id="incomeList"></div></div>
+<div class="panel"><h3>Подробная сводка для отчёта</h3><div id="financeReport"></div></div>
+</section>
+<section class="page" id="page-goals">
+<div class="panel"><h2>Мои цели</h2><form id="goalForm"><input type="hidden" name="id"><div class="fields"><label>Цель *<input name="title" required placeholder="Например, изучать ИИ"></label><label>Срок<input name="due" type="date"></label><label>Статус<select name="status"><option>В работе</option><option>Выполнена</option></select></label></div><div class="actions"><button class="btn">Сохранить цель</button><button type="button" class="btn secondary" onclick="resetForm('goalForm')">Очистить</button></div></form></div><div class="panel"><div id="goalList"></div></div></section>
+<section class="page" id="page-backup">
+<div class="panel"><h2>Резервное копирование</h2><p>Экспорт сохраняет объекты, график работ и стадии, журнал, рабочих, табель, зарплатные операции, расходы с чеками, поступления и другие данные в один JSON-файл.</p><div class="actions"><button class="btn" id="exportBtn">Экспортировать все данные</button><label class="btn secondary" style="display:inline-flex;justify-content:center;cursor:pointer">Импортировать JSON<input id="importFile" type="file" accept=".json,application/json" style="display:none"></label></div><p class="notice" style="margin-top:12px">Импорт заменит текущие данные на этом устройстве. Сначала экспортируйте текущую копию. Храните резервные файлы в безопасном месте.</p><div id="backupStatus" aria-live="polite"></div></div></section>
+</main>
+<footer>Мой штаб 0.8.1 · данные и чеки хранятся локально в браузере этого устройства. Проверяйте финансовые расчёты и основания удержаний перед выплатами. Регулярно сохраняйте JSON-копию.</footer>
+<script>
+const KEY='moiShtab_v03';
+const today=()=>new Date().toLocaleDateString('en-CA');
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const blank=()=>({version:3,objects:[],tasks:[],works:[],goals:[],workers:[],attendance:[],payments:[],expenses:[],schedule:[],income:[],accountable:[]});
+let db=load();
+function load(){try{const x=JSON.parse(localStorage.getItem(KEY));return x&&x.version===3?{...blank(),...x,schedule:Array.isArray(x.schedule)?x.schedule:[],income:Array.isArray(x.income)?x.income:[],accountable:Array.isArray(x.accountable)?x.accountable:[]}:blank()}catch(e){return blank()}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(db));renderAll();return true}catch(err){alert('Не удалось сохранить данные. Возможно, переполнено хранилище браузера из-за фотографий или чеков. Уменьшите файлы, сохраните резервную копию и повторите.');return false}}
+function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function money(n){return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽'}
+function objName(id){return db.objects.find(x=>x.id===id)?.name||'—'}
+function workerName(id){return db.workers.find(x=>x.id===id)?.name||'—'}
+function formData(form){return Object.fromEntries(new FormData(form).entries())}
+function resetForm(id){if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm')document.getElementById('substepsEditor').innerHTML='';if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
+function setForm(id,record){if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm')renderSubstepEditor(record.substeps||[]);if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||'other'}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';f.scrollIntoView({behavior:'smooth',block:'start'})}
+function removeItem(collection,id){if(confirm('Удалить эту запись?')){db[collection]=db[collection].filter(x=>x.id!==id);save()}}
+function table(headers,rows){if(!rows.length)return '<div class="empty">Записей пока нет.</div>';return '<div class="table-wrap"><table><thead><tr>'+headers.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'}
+function actionBtns(coll,x,form){return `<button class="btn small secondary" onclick="editItem('${coll}','${x.id}','${form}')">Изменить</button> <button class="btn small danger" onclick="removeItem('${coll}','${x.id}')">Удалить</button>`}
+function editItem(coll,id,form){const x=db[coll].find(a=>a.id===id);if(x){if(form==='paymentForm')showPage('payroll');else if(form==='expenseForm'||form==='accountableForm'||form==='incomeForm')showPage('finance');setForm(form,x)}}
+function refreshSelects(){const picker=document.getElementById('workWorkerPicker'),chosen=Array.from(picker.selectedOptions).map(o=>o.value);picker.innerHTML=db.workers.map(w=>`<option value="${esc(w.id)}" ${chosen.includes(w.id)?'selected':''}>${esc(w.name)}</option>`).join('');document.getElementById('staffSuggestions').innerHTML=db.workers.map(w=>`<option value="${esc(w.name)}"></option>`).join('');
+ document.querySelectorAll('.object-select').forEach(s=>{const val=s.value;const isAll=s.id==='reportObject'||s.id==='financeObject';s.innerHTML=(isAll?'<option value="">Все объекты</option>':'<option value="">Без объекта</option>')+db.objects.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');s.value=val});
+ document.querySelectorAll('.worker-select').forEach(s=>{const val=s.value;s.innerHTML='<option value="">Выберите рабочего</option>'+db.workers.map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');s.value=val});
+}
+function renderObjects(){document.getElementById('objectList').innerHTML=table(['Объект','Адрес','Ответственный','Примечание','Действия'],db.objects.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.address)}</td><td>${esc(x.manager)}</td><td>${esc(x.notes)}</td><td>${actionBtns('objects',x,'objectForm')}</td></tr>`))}
+function renderTasks(){const list=[...db.tasks].sort((a,b)=>(a.due||'').localeCompare(b.due||''));document.getElementById('taskList').innerHTML=table(['Задача','Объект','Срок','Статус','Ответственный','Действия'],list.map(x=>{const overdue=x.status!=='Выполнена'&&x.due&&x.due<today();return `<tr><td>${esc(x.title)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.due||'—')} ${overdue?'<span class="tag bad">Просрочена</span>':''}</td><td><span class="tag ${x.status==='Выполнена'?'ok':x.status==='В работе'?'warn':''}">${esc(x.status)}</span></td><td>${esc(x.assignee)}</td><td>${actionBtns('tasks',x,'taskForm')}</td></tr>`}).reverse())}
+function renderWorks(){document.getElementById('workList').innerHTML=table(['Дата','Объект','Вид работ','Объём','Материалы','Рабочих','Фото','Заметки','Действия'],[...db.works].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.title)}</td><td>${esc(x.volume)}</td><td>${esc(x.materials)}</td><td>${esc(x.workersCount||'—')}${x.workerIds?.length?'<div>'+x.workerIds.map(workerName).map(esc).join(', ')+'</div>':''}</td><td>${(x.photos||[]).map((ph,i)=>`<a href="${ph}" target="_blank" rel="noopener">Фото ${i+1}</a>`).join(', ')||'—'}</td><td>${esc(x.notes)}</td><td>${actionBtns('works',x,'workForm')}</td></tr>`))}
+function renderWorkers(){document.getElementById('workerList').innerHTML=table(['Рабочий','Профессия','Ставка за смену','Телефон','Действия'],db.workers.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.trade)}</td><td>${money(x.rate)}</td><td>${esc(x.phone)}</td><td>${actionBtns('workers',x,'workerForm')}</td></tr>`))}
+function renderAttendance(){document.getElementById('attendanceList').innerHTML=table(['Дата','Рабочий','Объект','Статус','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание','Действия'],[...db.attendance].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.status)}</td><td>${esc(x.hours)}</td><td>${esc(x.shifts)}</td><td>${money(x.fine)}</td><td>${money(x.deduction)}</td><td>${esc(x.adjustmentReason)}</td><td>${esc(x.notes)}</td><td>${actionBtns('attendance',x,'attendanceForm')}</td></tr>`))}
+function periodOK(date,from,to){return (!from||date>=from)&&(!to||date<=to)}
+function amountTotal(xs){return xs.reduce((n,x)=>n+(Number(x.amount)||0),0)}
+function payrollCalc(from=document.getElementById('payFrom').value,to=document.getElementById('payTo').value){return db.workers.map(w=>{
+ const att=db.attendance.filter(a=>a.workerId===w.id&&periodOK(a.date,from,to));const shifts=att.reduce((s,a)=>s+(Number(a.shifts)||0),0);
+ const accrued=shifts*(Number(w.rate)||0);
+ const p=db.payments.filter(a=>a.workerId===w.id&&periodOK(a.date,from,to));
+ const advances=amountTotal(p.filter(x=>x.kind==='Аванс'));
+ const paid=amountTotal(p.filter(x=>x.kind==='Выплата'));
+ const fines=att.reduce((s,x)=>s+(Number(x.fine)||0),0)+amountTotal(p.filter(x=>x.kind==='Штраф'));
+ const deductions=att.reduce((s,x)=>s+(Number(x.deduction)||0),0)+amountTotal(p.filter(x=>x.kind==='Удержание'));
+ const netAccrued=accrued-fines-deductions;
+ return {w,shifts,accrued,fines,deductions,netAccrued,advances,paid,balance:netAccrued-advances-paid};
+})}
+function renderPayroll(){
+ const rows=payrollCalc();const totals=rows.reduce((o,x)=>(['accrued','fines','deductions','netAccrued','advances','paid','balance'].forEach(k=>o[k]=(o[k]||0)+x[k]),o),{});
+ document.getElementById('payrollList').innerHTML=`<p class="muted-small">Всего начислено: <b>${money(totals.accrued)}</b> · Штрафы: ${money(totals.fines)} · Удержания: ${money(totals.deductions)} · К выдаче с учётом выплат: <b>${money(totals.balance)}</b></p>`+table(['Рабочий','Смены','Начислено','Штрафы','Удержания','После удержаний','Авансы','Выплачено','Остаток'],rows.map(x=>`<tr><td>${esc(x.w.name)}</td><td>${x.shifts.toLocaleString('ru-RU')}</td><td>${money(x.accrued)}</td><td>${money(x.fines)}</td><td>${money(x.deductions)}</td><td>${money(x.netAccrued)}</td><td>${money(x.advances)}</td><td>${money(x.paid)}</td><td><b>${money(x.balance)}</b></td></tr>`));
+ document.getElementById('paymentList').innerHTML=table(['Дата','Рабочий','Операция','Сумма','Источник выплаты','Причина / основание','Действия'],[...db.payments].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(x.kind)}</td><td>${money(x.amount)}</td><td>${['Аванс','Выплата'].includes(x.kind)?(x.paymentSource==='accountable'?'Подотчётные':x.paymentSource==='other'?'Другие':'Не указан'):'—'}</td><td>${esc(x.notes)}</td><td>${actionBtns('payments',x,'paymentForm')}</td></tr>`));
+}
+function receiptURL(url){return /^data:(?:image\/(?:png|jpe?g|gif|webp)|application\/pdf);base64,/i.test(url||'')?url:''}
+function renderExistingReceipts(arr=[]){const el=document.getElementById('existingReceipts');el.innerHTML=(arr||[]).map((r,i)=>{const safe=receiptURL(r.data);return `<div class="receipt-chip" data-index="${i}">${safe?`<a href="${esc(safe)}" download="${esc(r.name||'чек')}" title="Открыть или сохранить чек">${esc(r.name||'Чек')}</a>`:`<span>${esc(r.name||'Недоступный файл')}</span>`}<button type="button" class="btn small danger remove-receipt">Убрать</button></div>`}).join('');el.querySelectorAll('.remove-receipt').forEach(b=>b.addEventListener('click',()=>b.closest('.receipt-chip').remove()))}
+function renderExpenses(){
+ const from=document.getElementById('expenseFrom').value,to=document.getElementById('expenseTo').value;
+ const arr=db.expenses.filter(x=>periodOK(x.date,from,to)).sort((a,b)=>b.date.localeCompare(a.date));const total=amountTotal(arr);
+ document.getElementById('expenseList').innerHTML=`<p><b>Итого за период: ${money(total)}</b> · записей: ${arr.length}</p>`+table(['Дата','Объект','Категория','Сумма','Источник оплаты','Кому / магазин','Комментарий','Чеки','Действия'],arr.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.category)}</td><td>${money(x.amount)}</td><td>${x.paymentSource==='accountable'?'Подотчётные':x.paymentSource==='other'?'Другие':'Не указан'}</td><td>${esc(x.vendor)}</td><td>${esc(x.notes)}</td><td>${(x.receipts||[]).map((r,i)=>receiptURL(r.data)?`<a href="${esc(r.data)}" target="_blank" rel="noopener" download="${esc(r.name||'чек')}">Чек ${i+1}</a>`:`<span>Недоступен</span>`).join('<br>')||'—'}</td><td>${actionBtns('expenses',x,'expenseForm')}</td></tr>`));
+}
+function renderGoals(){document.getElementById('goalList').innerHTML=table(['Цель','Срок','Статус','Действия'],db.goals.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.due||'—')}</td><td>${esc(x.status)}</td><td>${actionBtns('goals',x,'goalForm')}</td></tr>`))}
+
+function substepRow(x={}){
+ const row=document.createElement('div');row.className='substep-editor';row.dataset.subid=x.id||uid();
+ row.innerHTML=`<div class="substep-title"><b>Стадия</b><button type="button" class="btn small danger substep-remove">Удалить</button></div><div class="fields"><label>Название *<input class="sub-title" required value="${esc(x.title||'')}" placeholder="Название стадии"></label><label>Начало *<input type="date" class="sub-start" required value="${esc(x.start||'')}"></label><label>Окончание *<input type="date" class="sub-end" required value="${esc(x.end||'')}"></label><label>Ответственный<input class="sub-assignee" list="staffSuggestions" autocomplete="off" value="${esc(x.assignee||'')}"></label><label>Статус<select class="sub-status">${['Запланировано','В работе','Выполнено','Задержка'].map(st=>`<option ${st===(x.status||'Запланировано')?'selected':''}>${st}</option>`).join('')}</select></label><label>Примечание<input class="sub-notes" value="${esc(x.notes||'')}"></label></div>`;
+ row.querySelector('.substep-remove').onclick=()=>row.remove();return row;
+}
+function renderSubstepEditor(arr){const el=document.getElementById('substepsEditor');el.innerHTML='';arr.forEach(x=>el.appendChild(substepRow(x)))}
+function collectSubsteps(){return Array.from(document.querySelectorAll('#substepsEditor .substep-editor')).map(el=>({id:el.dataset.subid,title:el.querySelector('.sub-title').value.trim(),start:el.querySelector('.sub-start').value,end:el.querySelector('.sub-end').value,assignee:el.querySelector('.sub-assignee').value.trim(),status:el.querySelector('.sub-status').value,notes:el.querySelector('.sub-notes').value.trim()}))}
+/* Планирование версии 0.7. Отдельный модуль без изменения локальных данных. */
+function scheduleDaysDelta(a,b){return Math.round((Date.parse(a+'T12:00:00Z')-Date.parse(b+'T12:00:00Z'))/86400000)}
+function scheduleDatePlus(date,days){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
+function scheduleGetState(x){
+ const st=x.status||'Запланировано',end=x.end||'',start=x.start||'',now=today();
+ if(st==='Задержка'||(st!=='Выполнено'&&end&&end<now))return {key:'late',title:'Задержка',detail:end&&end<now?`Просрочка ${scheduleDaysDelta(now,end)} дн.`:'Отмечена задержка'};
+ if(st==='Выполнено')return {key:'ontime',title:'Выполнено',detail:'Этап завершён'};
+ if(st==='Запланировано'||(start&&start>now))return {key:'planned',title:'Запланировано',detail:start>now?`Начало через ${scheduleDaysDelta(start,now)} дн.`:'Ожидает начала'};
+ return {key:'ontime',title:'В срок',detail:end?`Осталось ${Math.max(0,scheduleDaysDelta(end,now))} дн.`:'В работе'};
+}
+function scheduleFlatRows(){
+ const items=[...(db.schedule||[])].sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+ return items.flatMap(x=>[
+  {...x,kind:'Этап',objectLabel:objName(x.objectId),parentTitle:'',rowKey:x.id||''},
+  ...(x.substeps||[]).map((s,i)=>({...s,kind:'Стадия',objectLabel:objName(x.objectId),parentTitle:x.title||'',rowKey:(x.id||'')+'_'+i}))
+ ]);
+}
+function scheduleSetDefaultView(){
+ const field=document.getElementById('scheduleViewStart');
+ if(field.value)return;
+ const arr=scheduleFlatRows();const near=arr.filter(x=>x.end>=scheduleDatePlus(today(),-7)).sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+ field.value=near.length ? (near[0].start<today()?scheduleDatePlus(today(),-7):scheduleDatePlus(near[0].start,-3)) : arr.length?scheduleDatePlus(arr[0].start||today(),-3):scheduleDatePlus(today(),-7);
+}
+function renderSchedule(){
+ const rows=scheduleFlatRows(),groups=(db.schedule||[]);
+ const counts={late:0,ontime:0,planned:0};rows.forEach(x=>counts[scheduleGetState(x).key]++);
+ document.getElementById('scheduleSummary').innerHTML=`<div class="schedule-metric"><span>Этапов</span><strong>${groups.length}</strong></div><div class="schedule-metric"><span>Стадий</span><strong>${rows.length-groups.length}</strong></div><div class="schedule-metric late"><span>Задержки</span><strong>${counts.late}</strong></div><div class="schedule-metric ontime"><span>В срок / завершено</span><strong>${counts.ontime}</strong></div><div class="schedule-metric planned"><span>Запланировано</span><strong>${counts.planned}</strong></div>`;
+ const list=groups.slice().sort((a,b)=>(a.start||'').localeCompare(b.start||''));
+ document.getElementById('scheduleList').innerHTML=list.length?`<div class="schedule-cards">${list.map(x=>{
+  const state=scheduleGetState(x);
+  return `<article class="schedule-card status-${state.key}"><div class="schedule-card-head"><div><div class="schedule-card-kicker">${esc(objName(x.objectId))}</div><h3>${esc(x.title)}</h3><div class="schedule-card-sub">${esc(x.start||'—')} → ${esc(x.end||'—')} · ${esc(x.assignee||'Ответственный не указан')}</div></div><div class="schedule-card-actions"><span class="schedule-badge ${state.key}">${state.title}</span>${actionBtns('schedule',x,'scheduleForm')}</div></div>${x.notes?`<p class="schedule-note">${esc(x.notes)}</p>`:''}${(x.substeps||[]).length?`<div class="schedule-card-stages">${x.substeps.map((st,i)=>{const ss=scheduleGetState(st);return `<div class="schedule-stage-row"><span class="schedule-stage-index">${i+1}</span><div><strong>${esc(st.title)}</strong><small>${esc(st.start||'—')} — ${esc(st.end||'—')} · ${esc(st.assignee||'Не назначен')}</small></div><span class="schedule-badge ${ss.key}">${ss.title}</span></div>`}).join('')}</div>`:''}</article>`}).join('')}</div>`:'<div class="empty">Добавьте этапы и стадии, чтобы сформировать график.</div>';
+ scheduleSetDefaultView();renderScheduleTimeline(rows);
+}
+function renderScheduleTimeline(rows=scheduleFlatRows()){
+ const wrap=document.getElementById('scheduleTimeline'),start=document.getElementById('scheduleViewStart').value||today();
+ const count=Math.max(14,Math.min(90,Number(document.getElementById('scheduleViewDays').value)||30));
+ const finish=scheduleDatePlus(start,count-1),cell=29,dates=Array.from({length:count},(_,i)=>scheduleDatePlus(start,i));
+ document.getElementById('scheduleViewRange').textContent=`${start.split('-').reverse().join('.')} — ${finish.split('-').reverse().join('.')}`;
+ const header=dates.map(d=>{const day=new Date(d+'T12:00:00Z'),dow=day.getUTCDay(),cls=(d===today()?' today':'')+((dow===0||dow===6)?' weekend':'');return `<div class="gantt-day${cls}" title="${esc(d)}"><small>${day.getUTCDate()}</small><span>${['Вс','Пн','Вт','Ср','Чт','Пт','Сб'][dow].slice(0,2)}</span></div>`}).join('');
+ const rowHtml=rows.map(x=>{
+  const st=scheduleGetState(x),d1=scheduleDaysDelta(x.start||start,start),d2=scheduleDaysDelta(x.end||start,start);
+  const pos=Math.max(0,d1),end=Math.min(count-1,d2),shown=x.start&&x.end&&end>=pos&&d2>=0&&d1<count;
+  const label=(x.kind==='Этап'?'Этап':'Стадия')+': '+x.title+' ('+(x.start||'—')+' — '+(x.end||'—')+') · '+st.title;
+  return `<div class="gantt-row status-${st.key} ${x.kind==='Стадия'?'child':''}"><div class="gantt-label" title="${esc(label)}"><b>${x.kind==='Стадия'?'↳ ':''}${esc(x.title||'Без названия')}</b><small>${esc(x.assignee||'—')} · ${esc(x.start||'—')} — ${esc(x.end||'—')}</small></div><div class="gantt-track" style="width:${count*cell}px;--day-cell:${cell}px">${shown?`<div class="gantt-bar ${st.key}" title="${esc(label)}" style="left:${pos*cell+2}px;width:${(end-pos+1)*cell-4}px"><span>${(end-pos+1)>5?esc(st.title):''}</span></div>`:''}${dates.includes(today())?`<div class="gantt-today" style="left:${(scheduleDaysDelta(today(),start)+.5)*cell}px"></div>`:''}</div></div>`;
+ }).join('');
+ wrap.innerHTML=rows.length?`<div class="gantt-scroll"><div class="gantt-board" style="--day-cell:${cell}px"><div class="gantt-head"><div class="gantt-left-head">Этапы и стадии · ответственные</div><div class="gantt-dates" style="width:${count*cell}px">${header}</div></div>${rowHtml}</div></div>`:'<div class="empty">На шкале пока нет этапов. Создайте первый этап в форме выше.</div>';
+}
+
+function renderAnalytics(){
+ const el=document.getElementById('workChart'); if(!el)return;
+ const days=[];const base=new Date(today()+'T12:00:00');
+ for(let i=6;i>=0;i--){const d=new Date(base);d.setDate(d.getDate()-i);const key=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');days.push({key,label:d.toLocaleDateString('ru-RU',{weekday:'short',day:'2-digit'}),count:db.works.filter(w=>w.date===key).length});}
+ const max=Math.max(1,...days.map(d=>d.count));
+ el.innerHTML=days.map(d=>`<div class="chart-col"><span class="chart-value">${d.count||''}</span><div class="chart-bar" style="height:${Math.max(3,d.count/max*125)}px;opacity:${d.count?1:.25}"></div><span class="chart-label">${esc(d.label)}</span></div>`).join('');
+ const month=today().slice(0,7);
+ const monthWorks=db.works.filter(x=>x.date?.startsWith(month));
+ const volume=monthWorks.filter(x=>String(x.volume||'').trim()).length;
+ const photos=monthWorks.reduce((n,x)=>n+(x.photos||[]).length,0);
+ const active=(db.schedule||[]).filter(x=>x.status==='В работе').length;
+ const planned=(db.schedule||[]).filter(x=>x.status!=='Выполнено'&&x.end&&x.end<today()).length;
+ document.getElementById('analyticsSummary').innerHTML=[
+  ['Записей о работах в этом месяце',monthWorks.length],
+  ['Записей с указанным объёмом',volume],
+  ['Фото в журнале за месяц',photos],
+  ['Этапов в работе',active],
+  ['Просроченных этапов',planned]
+ ].map(([label,value])=>`<div class="mini-row"><span style="font-size:12px;color:var(--muted)">${label}</span><strong>${value}</strong></div>`).join('');
+}
+
+
+/* Отдельный расчёт подотчётных денежных средств. Данные предшествующих версий не переклассифицируются без согласия пользователя. */
+function accountableCalc(from='',to=''){
+ const inPeriod=d=>periodOK(d,from,to),asOf=to||today();
+ const allOps=(db.accountable||[]).filter(x=>!asOf||x.date<=asOf),allCosts=db.expenses.filter(x=>x.paymentSource==='accountable'&&(!asOf||x.date<=asOf)),allWages=db.payments.filter(x=>['Аванс','Выплата'].includes(x.kind)&&x.paymentSource==='accountable'&&(!asOf||x.date<=asOf));
+ const ops=(db.accountable||[]).filter(x=>inPeriod(x.date));
+ const costs=db.expenses.filter(x=>x.paymentSource==='accountable'&&inPeriod(x.date));
+ const wages=db.payments.filter(x=>['Аванс','Выплата'].includes(x.kind)&&x.paymentSource==='accountable'&&inPeriod(x.date));
+ const receipts=amountTotal(ops.filter(x=>x.kind==='receipt'));
+ const returns=amountTotal(ops.filter(x=>x.kind==='return'));
+ const spent=amountTotal(costs),wageSpent=amountTotal(wages);
+ const overall=amountTotal(allOps.filter(x=>x.kind==='receipt'))-amountTotal(allOps.filter(x=>x.kind==='return'))-amountTotal(allCosts)-amountTotal(allWages);
+ const oldCount=db.expenses.filter(x=>!x.paymentSource&&inPeriod(x.date)).length+db.payments.filter(x=>['Аванс','Выплата'].includes(x.kind)&&!x.paymentSource&&inPeriod(x.date)).length;
+ return {receipts,returns,spent,wageSpent,overall,net:receipts-returns-spent-wageSpent,oldCount,ops,costs,wages};
+}
+function renderAccountable(){
+ const from=document.getElementById('cashFrom').value,to=document.getElementById('cashTo').value,m=accountableCalc(from,to);
+ const fields=[['Получено от руководителя',m.receipts],['Расходы из подотчётных',m.spent],['Зарплата из подотчётных',m.wageSpent],['Возвращено руководителю',m.returns],['Изменение за период',m.net]];
+ document.getElementById('accountableStats').innerHTML=fields.map(([name,num])=>`<div class="stat"><span>${esc(name)}</span><strong>${money(num)}</strong></div>`).join('');
+ document.getElementById('accountableBalance').innerHTML=`<div><small>Остаток подотчётных средств на ${esc(to||today())}</small><strong class="${m.overall<0?'cash-negative':''}">${money(m.overall)}</strong></div><div><small>Расходы без источника в периоде</small><strong>${m.oldCount}</strong></div>`;
+ const rows=[...m.ops.map(x=>({...x,ledgerKind:x.kind==='receipt'?'Поступление':'Возврат',flow:x.kind==='receipt'?Number(x.amount):-Number(x.amount),original:'accountable'})),...m.costs.map(x=>({...x,ledgerKind:'Расход',flow:-Number(x.amount),original:'expenses'})),...m.wages.map(x=>({...x,ledgerKind:x.kind==='Аванс'?'Аванс рабочему':'Выплата зарплаты',flow:-Number(x.amount),original:'payments'}))].sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+ document.getElementById('cashLedger').innerHTML=table(['Дата','Операция','Сумма, ₽','Описание','Действия'],rows.map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(x.ledgerKind)}</td><td><span class="${x.flow<0?'cash-negative':'cash-positive'}">${x.flow>0?'+':''}${money(x.flow)}</span></td><td>${esc(x.original==='expenses'?[x.category,x.vendor,x.notes].filter(Boolean).join(' · '):x.original==='payments'?[workerName(x.workerId),x.notes].filter(Boolean).join(' · '):[x.source,x.notes].filter(Boolean).join(' · '))}</td><td>${actionBtns(x.original,x,x.original==='expenses'?'expenseForm':x.original==='payments'?'paymentForm':'accountableForm')}</td></tr>`));
+}
+
+function financeMetrics(from,to,oid=''){
+ const expenses=db.expenses.filter(x=>periodOK(x.date,from,to)&&(!oid||x.objectId===oid));
+ const incomes=db.income.filter(x=>periodOK(x.date,from,to)&&(!oid||x.objectId===oid));
+ const attendance=db.attendance.filter(x=>periodOK(x.date,from,to)&&(!oid||x.objectId===oid));
+ const payments=db.payments.filter(x=>periodOK(x.date,from,to));
+ const accrued=attendance.reduce((n,a)=>n+(Number(a.shifts)||0)*(Number(db.workers.find(w=>w.id===a.workerId)?.rate)||0),0);
+ const attFines=attendance.reduce((n,a)=>n+(Number(a.fine)||0),0);
+ const attDeductions=attendance.reduce((n,a)=>n+(Number(a.deduction)||0),0);
+ // Payment operations cannot be attributed to objects: do not falsely allocate them.
+ const opFines=oid?0:amountTotal(payments.filter(x=>x.kind==='Штраф'));
+ const opDeductions=oid?0:amountTotal(payments.filter(x=>x.kind==='Удержание'));
+ const fines=attFines+opFines,deductions=attDeductions+opDeductions;
+ const wagesNet=accrued-fines-deductions;
+ const expenseSum=amountTotal(expenses),incomeSum=amountTotal(incomes);
+ const advances=oid?null:amountTotal(payments.filter(x=>x.kind==='Аванс'));
+ const paid=oid?null:amountTotal(payments.filter(x=>x.kind==='Выплата'));
+ const cashWages=oid?null:advances+paid;
+ return {from,to,oid,expenses,incomes,attendance,accrued,attFines,attDeductions,opFines,opDeductions,fines,deductions,wagesNet,expenseSum,incomeSum,advances,paid,cashWages,estimatedResult:incomeSum-expenseSum-wagesNet,cashFlow:oid?null:incomeSum-expenseSum-cashWages};
+}
+function financeCategories(m){const byCat=new Map();m.expenses.forEach(x=>byCat.set(x.category||'Прочее',(byCat.get(x.category||'Прочее')||0)+(Number(x.amount)||0)));byCat.set('Зарплата после удержаний',m.wagesNet);return [...byCat.entries()].sort((a,b)=>b[1]-a[1]);}
+function financeCards(m){const arr=[['Поступления',m.incomeSum],['Расходы без зарплаты',m.expenseSum],['Зарплата начислена',m.accrued],['Штрафы и удержания',m.fines+m.deductions],['Зарплата после удержаний',m.wagesNet],['Расчётный результат',m.estimatedResult]];if(!m.oid)arr.push(['Выплачено рабочим',m.cashWages],['Денежный поток',m.cashFlow]);return arr.map(([label,value])=>`<div class="stat"><span>${esc(label)}</span><strong>${money(value)}</strong></div>`).join('')}
+function financeBars(m){const categories=financeCategories(m);const max=Math.max(1,...categories.map(x=>Math.max(0,x[1])));return categories.map(([cat,value])=>`<div><div class="finance-bar-top"><span>${esc(cat)}</span><b>${money(value)}</b></div><div class="finance-bar-track"><div class="finance-bar-fill" style="width:${Math.max(0,Math.min(100,value/max*100))}%"></div></div></div>`).join('')||'<div class="empty">Нет данных по расходам.</div>'}
+function financeObjectRows(from,to){
+ const ids=new Set([...db.objects.map(x=>x.id),...db.income.map(x=>x.objectId||''),...db.expenses.map(x=>x.objectId||''),...db.attendance.map(x=>x.objectId||'')]);
+ return [...ids].filter(id=>id===''||db.objects.some(o=>o.id===id)||db.income.some(x=>x.objectId===id)||db.expenses.some(x=>x.objectId===id)||db.attendance.some(x=>x.objectId===id)).map(id=>({name:id?objName(id):'Без объекта',...financeMetrics(from,to,id||'__unassigned__')})).map(x=>x.oid==='__unassigned__'?{...x,oid:'',...financeUnassigned(from,to)}:x);
+}
+function financeUnassigned(from,to){ // Separate unassigned data without including all objects.
+ const only=collection=>collection.filter(x=>periodOK(x.date,from,to)&&!x.objectId);
+ const expenses=only(db.expenses),incomes=only(db.income),attendance=only(db.attendance);
+ const accrued=attendance.reduce((n,a)=>n+(Number(a.shifts)||0)*(Number(db.workers.find(w=>w.id===a.workerId)?.rate)||0),0);
+ const fines=attendance.reduce((n,a)=>n+(Number(a.fine)||0),0),deductions=attendance.reduce((n,a)=>n+(Number(a.deduction)||0),0);
+ const incomeSum=amountTotal(incomes),expenseSum=amountTotal(expenses),wagesNet=accrued-fines-deductions;
+ return {expenses,incomes,attendance,accrued,fines,deductions,incomeSum,expenseSum,wagesNet,estimatedResult:incomeSum-expenseSum-wagesNet};
+}
+function financeRange(){return {from:document.getElementById('financeFrom').value,to:document.getElementById('financeTo').value,oid:document.getElementById('financeObject').value}}
+function financeObjectTable(from,to,selectedObject){const list=financeObjectRows(from,to).filter(x=>!selectedObject||db.objects.find(w=>w.name===x.name)?.id===selectedObject);return table(['Объект','Поступления','Расходы без зарплаты','Начислено','Штрафы / удержания из табеля','Зарплата после удержаний','Расчётный результат'],list.map(x=>`<tr><td>${esc(x.name)}</td><td>${money(x.incomeSum)}</td><td>${money(x.expenseSum)}</td><td>${money(x.accrued)}</td><td>${money(x.fines+x.deductions)}</td><td>${money(x.wagesNet)}</td><td><b>${money(x.estimatedResult)}</b></td></tr>`))}
+function renderFinance(){
+ const {from,to,oid}=financeRange(),m=financeMetrics(from,to,oid);
+ document.getElementById('financeStats').innerHTML=financeCards(m);renderAccountable();
+ document.getElementById('financeStructure').innerHTML=financeBars(m);
+ document.getElementById('financeSalaryBreakdown').innerHTML=[['Начислено по табелю',m.accrued],['Штрафы',m.fines],['Удержания',m.deductions],['После удержаний',m.wagesNet],...(!oid?[['Авансы (денежные выплаты)',m.advances],['Выплаты зарплаты',m.paid]]:[])].map(([name,num])=>`<div class="mini-row"><span>${esc(name)}</span><b>${money(num)}</b></div>`).join('');
+ document.getElementById('financeByObjects').innerHTML=financeObjectTable(from,to,oid);
+ const pairs=[['Период',`${from||'Начало'} — ${to||'Сегодня'}`],['Объект',oid?objName(oid):'Все объекты'],['Поступления',money(m.incomeSum)],['Расходы без зарплаты',money(m.expenseSum)],['Зарплата начислена',money(m.accrued)],['Штрафы',money(m.fines)],['Удержания',money(m.deductions)],['Зарплата после удержаний',money(m.wagesNet)],['Расчётный результат',money(m.estimatedResult)]];
+ if(!oid){const ca=accountableCalc(from,to);pairs.push(['Получено под отчёт',money(ca.receipts)],['Израсходовано из подотчётных',money(ca.spent)],['Зарплата из подотчётных',money(ca.wageSpent)],['Возврат руководителю',money(ca.returns)],['Остаток подотчётных на конец периода',money(ca.overall)]);}
+ if(!oid)pairs.push(['Авансы рабочим (выдано)',money(m.advances)],['Зарплата выдана',money(m.paid)],['Денежный поток',money(m.cashFlow)]);
+ document.getElementById('financeReport').innerHTML=table(['Показатель','Значение'],pairs.map(([a,b])=>`<tr><td>${esc(a)}</td><td><b>${esc(b)}</b></td></tr>`))+`<p class="muted-small">Расчётный результат = поступления − расходы (без зарплаты) − начисленная зарплата после удержаний. Денежный поток = поступления − расходы − реально выданные зарплата и авансы. Поступления под отчёт не являются доходом. Движение подотчётных сумм учитывается отдельно; неизвестный источник оплаты старых расходов нужно уточнить. В обоих случаях возможны другие неучтённые движения денежных средств.</p>`;
+ document.getElementById('incomeList').innerHTML=table(['Дата','Объект','Сумма','Источник','Комментарий','Действия'],[...db.income].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(objName(x.objectId))}</td><td>${money(x.amount)}</td><td>${esc(x.source)}</td><td>${esc(x.notes)}</td><td>${actionBtns('income',x,'incomeForm')}</td></tr>`));
+}
+function renderFinanceDashboard(){
+ const month=today().slice(0,7),m=financeMetrics(month+'-01',today());
+ const ca=accountableCalc(month+'-01',today());
+ document.getElementById('homeFinanceStats').innerHTML=financeCards(m)+[['Получено под отчёт за месяц',ca.receipts],['Потрачено подотчётных за месяц',ca.spent+ca.wageSpent],['Подотчётный остаток',ca.overall]].map(([label,v])=>`<div class="stat"><span>${esc(label)}</span><strong>${money(v)}</strong></div>`).join('');
+ document.getElementById('homeFinanceCharts').innerHTML=`<div><h3>Структура затрат</h3>${financeBars(m)}</div><div><h3>Объекты · расчётный результат</h3>${financeObjectRows(month+'-01',today()).filter(x=>x.incomeSum||x.expenseSum||x.accrued).map(x=>`<div class="mini-row"><span>${esc(x.name)}</span><strong>${money(x.estimatedResult)}</strong></div>`).join('')||'<div class="empty">Нет данных за месяц</div>'}</div>`;
+}
+
+function renderExtraAnalytics(){
+ const month=today().slice(0,7),m=financeMetrics(month+'-01',today());
+ const materials=m.expenses.filter(x=>x.category==='Материалы');
+ const activeWorkers=new Set(db.attendance.filter(x=>x.date?.startsWith(month)&&Number(x.shifts)>0).map(x=>x.workerId)).size;
+ const shifts=m.attendance.reduce((n,x)=>n+(Number(x.shifts)||0),0);
+ const objs=db.objects.map(o=>({name:o.name,...financeMetrics(month+'-01',today(),o.id)}));
+ const blocks=[['Объекты',`${db.objects.length} объектов · ${db.works.length} записей работ`,objs.map(x=>`${esc(x.name)}: поступления ${money(x.incomeSum)}, расходы ${money(x.expenseSum)}`).join('<br>')||'Нет объектов'],['Финансы за месяц',`Поступления ${money(m.incomeSum)} · Расходы ${money(m.expenseSum)}`,`Зарплата после удержаний: ${money(m.wagesNet)}<br>Расчётный результат: ${money(m.estimatedResult)}<br>Выплачено рабочим: ${money(m.cashWages)}<br>Денежный поток: ${money(m.cashFlow)}`],['Подотчётные средства',`Остаток ${money(accountableCalc(month+'-01',today()).overall)}`,`Получено за месяц: ${money(accountableCalc(month+'-01',today()).receipts)}<br>Потрачено за месяц (включая зарплату): ${money(accountableCalc(month+'-01',today()).spent+accountableCalc(month+'-01',today()).wageSpent)}`],['Материалы за месяц',`${money(amountTotal(materials))} · ${materials.length} операций`,`Категория расходов «Материалы».`],['Рабочие за месяц',`${activeWorkers} работали из ${db.workers.length} · ${shifts.toLocaleString('ru-RU')} смен`,`Штрафы: ${money(m.fines)}<br>Удержания: ${money(m.deductions)}`]];
+ document.getElementById('extraAnalytics').innerHTML=blocks.map(([name,value,details])=>`<div class="panel"><div class="section-kicker">${name}</div><strong>${value}</strong><p style="font-size:12px;color:var(--muted);line-height:1.7">${details}</p></div>`).join('');
+}
+function renderStats(){const month=today().slice(0,7);const exp=db.expenses.filter(x=>x.date?.startsWith(month)).reduce((s,x)=>s+Number(x.amount||0),0);const overdue=db.tasks.filter(x=>x.status!=='Выполнена'&&x.due&&x.due<today()).length;document.getElementById('stats').innerHTML=[['Объекты',db.objects.length],['Рабочие',db.workers.length],['Просроченные задачи',overdue],['Расходы в этом месяце',money(exp)]].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
+function renderAll(){refreshSelects();renderObjects();renderTasks();renderWorks();renderWorkers();renderAttendance();renderPayroll();renderExpenses();renderGoals();renderSchedule();renderStats();renderAnalytics();renderExtraAnalytics();renderFinance();renderFinanceDashboard()}
+function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;const x=formData(f);if(!x.id)x.id=uid();const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=x;else db[coll].push(x);resetForm(formId);save()})}
+
+document.getElementById('workForm').addEventListener('submit',async e=>{
+ e.preventDefault();
+ const f=e.currentTarget, x=formData(f), existing=db.works.find(a=>a.id===x.id);
+ x.id=x.id||uid();
+ const files=Array.from(f.elements.photos.files||[]);
+ const readFile=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
+ try{
+   x.photos=files.length?await Promise.all(files.map(readFile)):(existing?.photos||[]);x.workerIds=Array.from(document.getElementById('workWorkerPicker').selectedOptions).map(o=>o.value);
+   const i=db.works.findIndex(a=>a.id===x.id);
+   if(i>=0)db.works[i]=x;else db.works.push(x);
+   resetForm('workForm');save();
+ }catch(err){alert('Не удалось прочитать одно из фото. Попробуйте выбрать файлы ещё раз.')}
+});
+
+submitCollection('objectForm','objects');submitCollection('taskForm','tasks');
+document.getElementById('addSubstep').addEventListener('click',()=>{const row=substepRow();document.getElementById('substepsEditor').appendChild(row);row.querySelector('.sub-title').focus();row.scrollIntoView({behavior:'smooth',block:'nearest'});});
+document.getElementById('scheduleForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);if(x.end<x.start){alert('Дата окончания этапа раньше начала.');return;}const substeps=collectSubsteps();if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start)){alert('Проверьте название и сроки каждой стадии.');return;}x.id=x.id||uid();x.substeps=substeps;const i=db.schedule.findIndex(a=>a.id===x.id);if(i>=0)db.schedule[i]=x;else db.schedule.push(x);resetForm('scheduleForm');save()});submitCollection('goalForm','goals');submitCollection('workerForm','workers');submitCollection('attendanceForm','attendance');submitCollection('incomeForm','income');
+document.getElementById('accountableForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){alert('Укажите положительную сумму.');return}const i=db.accountable.findIndex(a=>a.id===x.id);if(i>=0)db.accountable[i]=x;else db.accountable.push(x);resetForm('accountableForm');save()});
+document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();const x=formData(e.currentTarget);x.id=x.id||uid();x.amount=Number(x.amount);const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]=x;else db.payments.push(x);resetForm('paymentForm');save()});
+document.getElementById('paymentReset').addEventListener('click',()=>resetForm('paymentForm'));
+function readDataURL(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)})}
+async function processReceipt(file){
+ const type=file.type||((file.name||'').toLowerCase().endsWith('.pdf')?'application/pdf':'');
+ if(type==='application/pdf'){
+   if(file.size>1_500_000)throw new Error(`PDF «${file.name}» больше 1,5 МБ. Уменьшите файл.`);
+   return {id:uid(),name:file.name,type:'application/pdf',data:await readDataURL(file)};
+ }
+ if(!type.startsWith('image/'))throw new Error(`«${file.name}»: поддерживаются фото и PDF.`);
+ const data=await readDataURL(file);
+ return await new Promise((resolve,reject)=>{
+  const img=new Image();img.onload=()=>{try{const max=1500,scale=Math.min(1,max/Math.max(img.width,img.height));const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);resolve({id:uid(),name:file.name.replace(/\.[^.]+$/,'.jpg'),type:'image/jpeg',data:canvas.toDataURL('image/jpeg',.7)})}catch(e){reject(e)}};img.onerror=()=>reject(new Error(`Не удалось прочитать изображение «${file.name}».`));img.src=data;
+ });
+}
+document.getElementById('expenseForm').addEventListener('submit',async e=>{
+ e.preventDefault();const form=e.currentTarget,x=formData(form);const old=db.expenses.find(a=>a.id===x.id);
+ x.id=x.id||uid();
+ const existing=old?.receipts||[];const savedIndices=Array.from(document.querySelectorAll('#existingReceipts .receipt-chip')).map(el=>Number(el.dataset.index));
+ const keep=savedIndices.map(i=>existing[i]).filter(Boolean);
+ try{
+  const files=Array.from(form.elements.receipts.files||[]);
+  if(files.length+keep.length>12)throw new Error('В одной записи допускается до 12 чеков.');
+  const newly=await Promise.all(files.map(processReceipt));x.receipts=[...keep,...newly];
+  if(x.receipts.reduce((n,r)=>n+(r.data?.length||0),0)>3_300_000)throw new Error('Чеки в одной записи занимают слишком много места (ограничение около 2,4 МБ).');
+  delete x.receiptsFile;
+  const i=db.expenses.findIndex(a=>a.id===x.id);
+  if(i>=0)db.expenses[i]=x;else db.expenses.push(x);
+  if(!save()){if(i>=0)db.expenses[i]=old;else db.expenses=db.expenses.filter(a=>a.id!==x.id);return;}
+  resetForm('expenseForm');
+ }catch(err){alert(err?.message||'Не удалось обработать чек. Проверьте размер и формат файлов.')}
+});
+/* Мобильное меню: по умолчанию скрыто, открывается по кнопке с тремя полосками. */
+const mobileMenuMedia=window.matchMedia('(max-width:760px)');
+const mobileMenuToggle=document.getElementById('mobileMenuToggle');
+const mobileNav=document.getElementById('nav');
+const mobileNavOverlay=document.getElementById('mobileNavOverlay');
+const mobileNavClose=document.getElementById('mobileNavClose');
+function setMobileNav(open,returnFocus=false){
+  const enabled=mobileMenuMedia.matches;
+  const willOpen=Boolean(open&&enabled);
+  document.body.classList.toggle('mobile-nav-open',willOpen);
+  mobileMenuToggle.setAttribute('aria-expanded',String(willOpen));
+  mobileMenuToggle.setAttribute('aria-label',willOpen?'Закрыть меню разделов':'Открыть меню разделов');
+  mobileNav.inert=enabled&&!willOpen;
+  if(willOpen){(mobileNav.querySelector('[data-page].active')||mobileNavClose).focus({preventScroll:true});}
+  else if(returnFocus&&enabled){mobileMenuToggle.focus({preventScroll:true});}
+}
+mobileMenuToggle.addEventListener('click',()=>setMobileNav(!document.body.classList.contains('mobile-nav-open')));
+mobileNavOverlay.addEventListener('click',()=>setMobileNav(false,true));
+mobileNavClose.addEventListener('click',()=>setMobileNav(false,true));
+document.addEventListener('keydown',e=>{
+  if(!document.body.classList.contains('mobile-nav-open'))return;
+  if(e.key==='Escape'){e.preventDefault();setMobileNav(false,true);return;}
+  if(e.key==='Tab'){
+    const focusable=Array.from(mobileNav.querySelectorAll('button:not([disabled])'));
+    const first=focusable[0],last=focusable[focusable.length-1];
+    if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+    else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+  }
+});
+if(mobileMenuMedia.addEventListener)mobileMenuMedia.addEventListener('change',()=>setMobileNav(false));
+else mobileMenuMedia.addListener(()=>setMobileNav(false));
+setMobileNav(false);
+document.getElementById('nav').addEventListener('click',e=>{const b=e.target.closest('[data-page]');if(!b)return;showPage(b.dataset.page)});
+function showPage(id){document.querySelectorAll('section.page').forEach(s=>s.classList.toggle('active',s.id==='page-'+id));document.querySelectorAll('#nav button[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));if(id==='payroll')renderPayroll();setMobileNav(false)}
+document.querySelectorAll('[data-goto]').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.goto)));
+document.getElementById('makeReport').addEventListener('click',()=>{const d=document.getElementById('reportDate').value||today(),oid=document.getElementById('reportObject').value;const match=x=>x.date===d&&(!oid||x.objectId===oid);const works=db.works.filter(match),expenses=db.expenses.filter(match),tasks=db.tasks.filter(x=>(!oid||x.objectId===oid)&&x.status==='Выполнена'&&(!x.due||x.due===d));let lines=[`ЕЖЕДНЕВНЫЙ ОТЧЁТ — ${d}`,`Объект: ${oid?objName(oid):'все объекты'}`,'','Выполненные работы:'];lines.push(...(works.length?works.map(x=>`- ${objName(x.objectId)}: ${x.title}${x.volume?' — объём: '+x.volume:''}${x.materials?'; материалы: '+x.materials:''}${x.workersCount?'; рабочих: '+x.workersCount:''}${x.photos?.length?'; фото: '+x.photos.length:''}${x.notes?'; заметки: '+x.notes:''}`):['- Записи о работах не добавлены.']));lines.push('','Задачи:');lines.push(...(tasks.length?tasks.map(x=>`- ${x.title} — выполнена`):['- Нет задач, отмеченных выполненными за эту дату.']));lines.push('','Расходы:');lines.push(...(expenses.length?expenses.map(x=>`- ${objName(x.objectId)} / ${x.category}: ${money(x.amount)}${x.vendor?' — '+x.vendor:''}${x.notes?' ('+x.notes+')':''}`):['- Расходы не указаны.']));const attendance=db.attendance.filter(a=>a.date===d&&(!oid||a.objectId===oid)&&a.status!=='Отсутствовал');const uniqueWorkers=new Set(attendance.map(a=>a.workerId));const recordedCounts=works.map(w=>Number(w.workersCount)||0);const workersCount=recordedCounts.length?Math.max(...recordedCounts):uniqueWorkers.size;lines.push('',`Количество рабочих: ${workersCount||0}`);lines.push(`Итого расходов: ${money(expenses.reduce((s,x)=>s+Number(x.amount||0),0))}`);lines.push('','Фотоотчёт:');lines.push(...(works.some(x=>x.photos?.length)?works.flatMap(x=>(x.photos||[]).map((_,i)=>`- ${objName(x.objectId)} / ${x.title}: фото ${i+1} (см. фото ниже)`)):['- Фото не прикреплены.']));document.getElementById('reportText').textContent=lines.join('\n');document.getElementById('reportPhotos').innerHTML=works.flatMap(x=>(x.photos||[]).map((src,i)=>`<div><img src="${src}" alt="Фото ${i+1}" style="width:100%;max-height:260px;object-fit:contain;border-radius:8px;border:1px solid var(--line)"><p>${esc(objName(x.objectId))} · ${esc(x.title)} · Фото ${i+1}</p></div>`)).join('')||'<div class="empty">Для этой даты фото нет.</div>'});
+
+document.getElementById('pdfReport').addEventListener('click',()=>{
+  // Open synchronously from the user click to avoid popup blockers.
+  const printWin=window.open('','_blank');
+  if(!printWin){alert('Браузер заблокировал новое окно. Разрешите всплывающие окна для приложения и повторите.');return;}
+  document.getElementById('makeReport').click();
+  const report=document.getElementById('reportText').textContent;
+  const date=document.getElementById('reportDate').value||today();
+  const objectSelect=document.getElementById('reportObject');
+  const objectName=objectSelect.value?objectSelect.options[objectSelect.selectedIndex].text:'Все объекты';
+  const photos=Array.from(document.querySelectorAll('#reportPhotos img')).map((img,i)=>{
+    const caption=img.nextElementSibling?img.nextElementSibling.textContent:'Фото '+(i+1);
+    return `<figure><img src="${img.src}" alt="${esc(caption)}"><figcaption>${esc(caption)}</figcaption></figure>`;
+  }).join('');
+  const safeReport=esc(report).replace(/\n/g,'<br>');
+  printWin.document.open();
+  printWin.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Ежедневный отчёт ${esc(date)}</title>
+  <style>
+  @page{size:A4;margin:16mm}
+  *{box-sizing:border-box}
+  body{font:12pt/1.5 Arial,Helvetica,sans-serif;color:#17233d;margin:0;background:#fff}
+  h1{font-size:23pt;margin:0 0 3mm;color:#2349c8;border-bottom:3px solid #456df3;padding-bottom:4mm}
+  .meta{font-size:10pt;color:#4e5d78;margin-bottom:8mm;background:#f1f4ff;padding:4mm;border-radius:3mm}
+  .report{white-space:normal;overflow-wrap:anywhere}
+  .photos{display:grid;grid-template-columns:1fr 1fr;gap:7mm;margin-top:5mm}
+  figure{margin:0;break-inside:avoid;page-break-inside:avoid}
+  figure img{display:block;width:100%;max-height:100mm;object-fit:contain;border:1px solid #d9e1f0;border-radius:2mm;padding:1mm;background:#f8faff}
+  figcaption{font-size:9pt;margin-top:2mm;overflow-wrap:anywhere}
+  h2{font-size:15pt;margin:9mm 0 3mm;color:#2349c8;border-bottom:1px solid #dce5fb;padding-bottom:2mm}
+  .no-photos{color:#555;font-size:10pt}
+  @media print{a{color:inherit}}
+  </style></head><body>
+  <h1>Ежедневный отчёт</h1>
+  <div class="meta"><strong>Дата:</strong> ${esc(date)} &nbsp; <strong>Объект:</strong> ${esc(objectName)}</div>
+  <div class="report">${safeReport}</div>
+  <h2>Фотоотчёт</h2><div class="photos">${photos || '<p class="no-photos">Фотографии за выбранную дату не прикреплены.</p>'}</div>
+  <script>window.addEventListener('load',()=>{const imgs=Array.from(document.images);Promise.all(imgs.map(i=>i.complete?Promise.resolve():new Promise(r=>{i.onload=r;i.onerror=r;}))).then(()=>setTimeout(()=>window.print(),300));});<\/script>
+  </body></html>`);
+  printWin.document.close();
+});
+
+document.getElementById('copyReport').addEventListener('click',async()=>{const t=document.getElementById('reportText').textContent;try{await navigator.clipboard.writeText(t);alert('Текст отчёта скопирован.')}catch(e){const r=document.createRange();r.selectNodeContents(document.getElementById('reportText'));const s=window.getSelection();s.removeAllRanges();s.addRange(r);alert('Выделите текст отчёта и скопируйте его вручную.')}});
+document.getElementById('refreshPayroll').addEventListener('click',renderPayroll);document.getElementById('filterExpenses').addEventListener('click',renderExpenses);
+document.getElementById('refreshFinance').addEventListener('click',renderFinance);
+
+/* Встроенный XLSX-экспорт: без внешних библиотек, работает офлайн. */
+const shtXmlEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+function shtCol(n){let s='';for(;n>0;n=Math.floor((n-1)/26))s=String.fromCharCode(65+(n-1)%26)+s;return s}
+function shtSerial(s){return s?Math.round((Date.parse(s+'T00:00:00Z')-Date.UTC(1899,11,30))/86400000):null}
+function shtCell(col,row,v,style=0,formula='',cached=''){
+ const id=shtCol(col)+row,mark=style?` s="${style}"`:'';
+ if(formula)return `<c r="${id}"${mark}${typeof cached==='string'?' t="str"':''}><f>${shtXmlEsc(formula.replace(/^=/,''))}</f><v>${shtXmlEsc(cached)}</v></c>`;
+ if(v===null||v===undefined||v==='')return `<c r="${id}"${mark}/>`;
+ if(typeof v==='number'&&Number.isFinite(v))return `<c r="${id}"${mark}><v>${v}</v></c>`;
+ return `<c r="${id}"${mark} t="inlineStr"><is><t xml:space="preserve">${shtXmlEsc(v)}</t></is></c>`;
+}
+function shtSheetXml(rows,columns,opts={}){
+ const widthTags=columns.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('');
+ const rowTags=rows.map(({index,cells,height})=>`<row r="${index}"${height?` ht="${height}" customHeight="1"`:''}>${cells.join('')}</row>`).join('');
+ return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView showGridLines="0" zoomScale="80" workbookViewId="0">${opts.freeze?`<pane xSplit="4" ySplit="6" topLeftCell="E7" activePane="bottomRight" state="frozen"/>`:''}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${widthTags}</cols><sheetData>${rowTags}</sheetData>${opts.merge?`<mergeCells count="${opts.merge.length}">${opts.merge.map(ref=>`<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`:''}${opts.conditional||''}${opts.autoFilter?`<autoFilter ref="${opts.autoFilter}"/>`:''}<pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/></worksheet>`;
+}
+const shtStyles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="165" formatCode="dd.mm.yyyy"/><numFmt numFmtId="166" formatCode="dd.mm"/></numFmts><fonts count="4"><font><sz val="11"/><color rgb="FF24344B"/><name val="Aptos"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Aptos"/></font><font><b/><sz val="18"/><color rgb="FF173F75"/><name val="Aptos Display"/></font><font><b/><sz val="11"/><color rgb="FF16477A"/><name val="Aptos"/></font></fonts><fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF166EB1"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE7F2FD"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF4F8FD"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFF5FB"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="hair"><color rgb="FFDDE5EF"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFill="1" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1"/><xf numFmtId="166" fontId="1" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFill="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="3"><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFCE2E2"/></patternFill></fill><font><color rgb="FFA61B1B"/></font></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFDCF6E8"/></patternFill></fill><font><color rgb="FF146C43"/></font></dxf><dxf><fill><patternFill patternType="solid"><fgColor rgb="FFFFE8B3"/></patternFill></fill><font><color rgb="FF805200"/></font></dxf></dxfs></styleSheet>`;
+function shtCF(range,conditions){return `<conditionalFormatting sqref="${range}">${conditions.map(([formula,dxf,priority])=>`<cfRule type="expression" dxfId="${dxf}" priority="${priority}"><formula>${shtXmlEsc(formula)}</formula></cfRule>`).join('')}</conditionalFormatting>`}
+function shtZip(entries){
+ // ZIP without compression; all data is UTF-8, and all processing is local.
+ const encoder=new TextEncoder(),parts=[],central=[];let offset=0;
+ const u16=(v)=>{const a=new Uint8Array(2);new DataView(a.buffer).setUint16(0,v,true);return a};
+ const u32=(v)=>{const a=new Uint8Array(4);new DataView(a.buffer).setUint32(0,v>>>0,true);return a};
+ const concat=arr=>{const len=arr.reduce((s,x)=>s+x.length,0),out=new Uint8Array(len);let p=0;arr.forEach(x=>{out.set(x,p);p+=x.length});return out};
+ const table=new Uint32Array(256);for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=c&1?(0xEDB88320^(c>>>1)):(c>>>1);table[n]=c>>>0}
+ const crc=data=>{let c=0xFFFFFFFF;for(let i=0;i<data.length;i++)c=table[(c^data[i])&255]^(c>>>8);return (c^0xFFFFFFFF)>>>0};
+ for(const [filename,content] of Object.entries(entries)){
+  const name=encoder.encode(filename),data=encoder.encode(content),checksum=crc(data),len=data.length;
+  const local=concat([u32(0x04034b50),u16(20),u16(2048),u16(0),u16(0),u16(0),u32(checksum),u32(len),u32(len),u16(name.length),u16(0),name,data]);
+  const item=concat([u32(0x02014b50),u16(20),u16(20),u16(2048),u16(0),u16(0),u16(0),u32(checksum),u32(len),u32(len),u16(name.length),u16(0),u16(0),u16(0),u16(0),u32(0),u32(offset),name]);
+  parts.push(local);central.push(item);offset+=local.length;
+ }
+ const cd=concat(central),end=concat([u32(0x06054b50),u16(0),u16(0),u16(central.length),u16(central.length),u32(cd.length),u32(offset),u16(0)]);
+ return new Blob([...parts,cd,end],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+}
+function exportScheduleXlsx(){
+ const records=scheduleFlatRows(),start=document.getElementById('scheduleViewStart').value||today(),days=Number(document.getElementById('scheduleViewDays').value)||30;
+ const lastRow=Math.max(7,records.length+6),right=shtCol(11+days);const grid=[];
+ grid.push({index:1,height:32,cells:[shtCell(1,1,'МОЙ ШТАБ · ГРАФИК РАБОТ',2)]});
+ grid.push({index:2,cells:[shtCell(1,2,'Этапы, стадии и сроки. Формулы и цвета обновляются при изменении данных в Excel.')]});
+ grid.push({index:3,cells:[shtCell(1,3,'Задержки',8),shtCell(2,3,null,0,`COUNTIF(H7:H${lastRow},"Задержка")`,records.filter(x=>scheduleGetState(x).key==='late').length),shtCell(4,3,'В срок',8),shtCell(5,3,null,0,`COUNTIF(H7:H${lastRow},"В срок")`,records.filter(x=>scheduleGetState(x).key==='ontime').length),shtCell(7,3,'Запланировано',8),shtCell(8,3,null,0,`COUNTIF(H7:H${lastRow},"Запланировано")`,records.filter(x=>scheduleGetState(x).key==='planned').length)]});
+ grid.push({index:4,cells:[shtCell(1,4,'Красный = просрочено или «Задержка» · Зелёный = в срок или выполнено · Жёлтый = запланировано.')]});
+ grid.push({index:5,cells:[shtCell(1,5,`Период диаграммы: ${start} — ${scheduleDatePlus(start,days-1)}. Чтобы сдвинуть шкалу в Excel, измените дату в L6.`)]});
+ const headers=['Тип','Объект','Этап / стадия','Ответственный','Дата начала','Дата окончания','Исходный статус','По срокам (формула)','Осталось, дней','Длительность, дней','Примечание'];
+ const cells=headers.map((s,i)=>shtCell(i+1,6,s,1));for(let d=0;d<days;d++){const column=12+d;cells.push(d?shtCell(column,6,null,6,`${shtCol(column-1)}6+1`,shtSerial(scheduleDatePlus(start,d))):shtCell(column,6,shtSerial(start),6))}grid.push({index:6,height:32,cells});
+ records.forEach((x,index)=>{
+  const r=index+7,style=x.kind==='Этап'?5:0,st=scheduleGetState(x);
+  const vals=[x.kind,x.objectLabel||'—',x.kind==='Стадия'?'  ↳ '+x.title:x.title,x.assignee||'',shtSerial(x.start),shtSerial(x.end),x.status||'Запланировано'];
+  const data=vals.map((v,i)=>shtCell(i+1,r,v,i===4||i===5?3:style));
+  const formula=`IF(OR(E${r}="",F${r}=""),"Нет сроков",IF(OR(G${r}="Задержка",AND(G${r}<>"Выполнено",F${r}<TODAY())),"Задержка",IF(G${r}="Выполнено","В срок",IF(OR(G${r}="Запланировано",E${r}>TODAY()),"Запланировано","В срок"))))`;
+  data.push(shtCell(8,r,null,style,formula,st.key==='late'?'Задержка':st.key==='planned'?'Запланировано':'В срок'));
+  data.push(shtCell(9,r,null,style,`IF(OR(E${r}="",F${r}=""),"",IF(G${r}="Выполнено",0,F${r}-TODAY()))`,x.status==='Выполнено'?0:x.end?scheduleDaysDelta(x.end,today()):0));
+  data.push(shtCell(10,r,null,style,`IF(OR(E${r}="",F${r}=""),"",MAX(0,F${r}-E${r}+1))`,x.start&&x.end?scheduleDaysDelta(x.end,x.start)+1:0));
+  data.push(shtCell(11,r,x.notes||'',style));
+  grid.push({index:r,height:x.kind==='Этап'?24:21,cells:data});
+ });
+ if(!records.length)grid.push({index:7,cells:[shtCell(3,7,'В графике пока нет этапов.')]});
+ const statusConditions=[['$H7="Задержка"',0,1],['$H7="В срок"',1,2],['$H7="Запланировано"',2,3]];
+ const cfs=shtCF(`A7:K${lastRow}`,statusConditions)+shtCF(`L7:${right}${lastRow}`,[
+  [`AND(L$6>=$E7,L$6<=$F7,$H7="Задержка")`,0,4],
+  [`AND(L$6>=$E7,L$6<=$F7,$H7="В срок")`,1,5],
+  [`AND(L$6>=$E7,L$6<=$F7,$H7="Запланировано")`,2,6]
+ ]);
+ const sheet1=shtSheetXml(grid,[15,25,37,26,17,17,21,23,17,21,40,...Array(days).fill(5)],{freeze:true,merge:['A1:K1','A2:K2','A4:K4','A5:K5'],conditional:cfs,autoFilter:`A6:K${lastRow}`});
+ const summ=[];summ.push({index:1,height:35,cells:[shtCell(1,1,'СВОДКА ПО ГРАФИКУ РАБОТ',2)]});
+ summ.push({index:3,cells:[shtCell(1,3,'Показатель',1),shtCell(2,3,'Значение',1)]});
+ const sm=[['Этапов',`COUNTIF('График'!A7:A${lastRow},"Этап")`,(db.schedule||[]).length],['Стадий',`COUNTIF('График'!A7:A${lastRow},"Стадия")`,records.filter(x=>x.kind==='Стадия').length],['Просрочено',`COUNTIF('График'!H7:H${lastRow},"Задержка")`,records.filter(x=>scheduleGetState(x).key==='late').length],['В срок',`COUNTIF('График'!H7:H${lastRow},"В срок")`,records.filter(x=>scheduleGetState(x).key==='ontime').length],['Запланировано',`COUNTIF('График'!H7:H${lastRow},"Запланировано")`,records.filter(x=>scheduleGetState(x).key==='planned').length],['Всего строк',`COUNTA('График'!C7:C${lastRow})`,records.length]];
+ sm.forEach(([s,f,c],i)=>summ.push({index:i+4,cells:[shtCell(1,i+4,s,i===2?8:0),shtCell(2,i+4,null,0,f,c)]}));
+ summ.push({index:12,cells:[shtCell(1,12,'ПРАВИЛА ЦВЕТОВ',8)]});
+ summ.push({index:13,cells:[shtCell(1,13,'Красный: срок прошёл, задача не выполнена; либо исходный статус «Задержка».')]});
+ summ.push({index:14,cells:[shtCell(1,14,'Зелёный: в работе в пределах срока или статус «Выполнено».')]});
+ summ.push({index:15,cells:[shtCell(1,15,'Жёлтый: статус «Запланировано» либо дата начала в будущем.')]});
+ summ.push({index:17,cells:[shtCell(1,17,'Статусы и дни пересчитываются формулами по текущей дате TODAY().')]});
+ summ.push({index:18,cells:[shtCell(1,18,'Дата фактического завершения отдельно не ведётся: «Выполнено» отображается зелёным.')]});
+ const sheet2=shtSheetXml(summ,[90,19],{merge:['A1:B1']});
+ const files={
+  '[Content_Types].xml':'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
+  '_rels/.rels':'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+  'xl/workbook.xml':'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="График" sheetId="1" r:id="rId1"/><sheet name="Сводка" sheetId="2" r:id="rId2"/></sheets><calcPr calcId="191029" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>',
+  'xl/_rels/workbook.xml.rels':'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
+  'xl/styles.xml':shtStyles,'xl/worksheets/sheet1.xml':sheet1,'xl/worksheets/sheet2.xml':sheet2
+ };
+ const file=shtZip(files),url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download='grafik-rabot-'+today()+'.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+}
+
+document.getElementById('exportScheduleExcel').addEventListener('click',()=>{try{exportScheduleXlsx()}catch(err){console.error(err);alert('Не удалось подготовить Excel: '+err.message)}});
+for(const id of ['scheduleViewStart','scheduleViewDays'])document.getElementById(id).addEventListener('change',()=>renderScheduleTimeline());
+document.getElementById('schedulePrev').addEventListener('click',()=>{const d=document.getElementById('scheduleViewStart');d.value=scheduleDatePlus(d.value||today(),-Number(document.getElementById('scheduleViewDays').value));renderScheduleTimeline()});
+document.getElementById('scheduleNext').addEventListener('click',()=>{const d=document.getElementById('scheduleViewStart');d.value=scheduleDatePlus(d.value||today(),Number(document.getElementById('scheduleViewDays').value));renderScheduleTimeline()});
+document.getElementById('scheduleCurrent').addEventListener('click',()=>{document.getElementById('scheduleViewStart').value=scheduleDatePlus(today(),-7);renderScheduleTimeline()});
+
+function excelXML(filename,headers,rows){
+ const xmlEsc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
+ const cell=v=>{const numeric=typeof v==='number'&&Number.isFinite(v);return `<Cell><Data ss:Type="${numeric?'Number':'String'}">${xmlEsc(v)}</Data></Cell>`};
+ const row=arr=>`<Row>${arr.map(cell).join('')}</Row>`;
+ const xml=`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Данные"><Table>${row(headers)}${rows.map(row).join('')}</Table></Worksheet></Workbook>`;
+ const blob=new Blob([xml],{type:'application/vnd.ms-excel;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+document.getElementById('exportTimesheetExcel').addEventListener('click',()=>excelXML('tabel-'+today()+'.xls',['Дата','Рабочий','Объект','Статус','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание'],db.attendance.map(x=>[x.date,workerName(x.workerId),objName(x.objectId),x.status,Number(x.hours)||0,Number(x.shifts)||0,Number(x.fine)||0,Number(x.deduction)||0,x.adjustmentReason,x.notes])));
+document.getElementById('exportPayrollExcel').addEventListener('click',()=>excelXML('zarplata-'+today()+'.xls',['Рабочий','Смены','Начислено, ₽','Штрафы, ₽','Удержания, ₽','После удержаний, ₽','Авансы, ₽','Выплачено, ₽','Остаток, ₽'],payrollCalc().map(x=>[x.w.name,x.shifts,x.accrued,x.fines,x.deductions,x.netAccrued,x.advances,x.paid,x.balance])));
+document.getElementById('exportExpensesExcel').addEventListener('click',()=>{const from=document.getElementById('expenseFrom').value,to=document.getElementById('expenseTo').value;excelXML('rashody-'+today()+'.xls',['Дата','Объект','Категория','Сумма, ₽','Кому / магазин','Комментарий','Чеки (имена файлов)','Источник оплаты'],db.expenses.filter(x=>periodOK(x.date,from,to)).map(x=>[x.date,objName(x.objectId),x.category,Number(x.amount)||0,x.vendor,x.notes,(x.receipts||[]).map(r=>r.name).join('; '),x.paymentSource==='accountable'?'Подотчётные':x.paymentSource==='other'?'Другие':'Не указан']))});
+
+document.getElementById('cashApply').addEventListener('click',()=>renderAccountable());
+document.getElementById('exportCashExcel').addEventListener('click',()=>{
+ const from=document.getElementById('cashFrom').value,to=document.getElementById('cashTo').value,m=accountableCalc(from,to);
+ const rows=[['СВОДКА','Получено','',m.receipts],['СВОДКА','Потрачено на расходы','',m.spent],['СВОДКА','Потрачено на зарплату','',m.wageSpent],['СВОДКА','Возвращено','',m.returns],['СВОДКА','Изменение за период','',m.net],['СВОДКА','Остаток на конец периода','',m.overall],...m.ops.map(x=>['ОПЕРАЦИЯ',x.date,x.kind==='receipt'?'Поступление · '+(x.source||''):'Возврат · '+(x.source||''),Number(x.amount)*(x.kind==='receipt'?1:-1)]),...m.costs.map(x=>['РАСХОД',x.date,[x.category,x.vendor,x.notes].filter(Boolean).join(' · '),-Number(x.amount)]),...m.wages.map(x=>['ЗАРПЛАТА',x.date,[x.kind,workerName(x.workerId),x.notes].filter(Boolean).join(' · '),-Number(x.amount)])];
+ excelXML('podotchetnye-sredstva-'+today()+'.xls',['Раздел','Дата / показатель','Примечание','Сумма, ₽'],rows);
+});
+
+document.getElementById('exportFinanceExcel').addEventListener('click',()=>{
+ const {from,to,oid}=financeRange(),m=financeMetrics(from,to,oid),rows=[['Период',`${from||'начало'} — ${to||'конец'}`,'',0],['Объект',oid?objName(oid):'Все объекты','',0],['ИТОГО','Поступления','',m.incomeSum],['ИТОГО','Расходы без зарплаты','',m.expenseSum],['ИТОГО','Начислено зарплаты','',m.accrued],['ИТОГО','Штрафы','',m.fines],['ИТОГО','Удержания','',m.deductions],['ИТОГО','Зарплата после удержаний','',m.wagesNet],['ИТОГО','Расчётный результат','',m.estimatedResult]];
+ if(!oid){const ca=accountableCalc(from,to);rows.push(['ПОДОТЧЁТ','Получено от руководителя','',ca.receipts],['ПОДОТЧЁТ','Израсходовано','',ca.spent],['ПОДОТЧЁТ','Зарплата из подотчётных','',ca.wageSpent],['ПОДОТЧЁТ','Возвращено','',ca.returns],['ПОДОТЧЁТ','Остаток на конец периода','',ca.overall]);ca.ops.forEach(x=>rows.push(['ПОДОТЧЁТ ОПЕРАЦИЯ',x.date,`${x.kind==='receipt'?'Поступление':'Возврат'}; ${x.source||''}; ${x.notes||''}`,Number(x.amount)||0]));}
+ if(!oid)rows.push(['ИТОГО','Авансы выплачены','',m.advances],['ИТОГО','Зарплата выплачена','',m.paid],['ИТОГО','Денежный поток','',m.cashFlow]);
+ financeCategories(m).forEach(([name,value])=>rows.push(['СТРУКТУРА ЗАТРАТ',name,'',value]));
+ financeObjectRows(from,to).filter(x=>!oid||db.objects.find(w=>w.name===x.name)?.id===oid).forEach(x=>rows.push(['ОБЪЕКТ',x.name,'Поступления',x.incomeSum],['ОБЪЕКТ',x.name,'Расходы',x.expenseSum],['ОБЪЕКТ',x.name,'Зарплата',x.wagesNet],['ОБЪЕКТ',x.name,'Результат',x.estimatedResult]));
+ m.incomes.forEach(x=>rows.push(['ПОСТУПЛЕНИЕ',x.date,`${objName(x.objectId)}; ${x.source||''}`,Number(x.amount)||0]));
+ m.expenses.forEach(x=>rows.push(['РАСХОД',x.date,`${objName(x.objectId)}; ${x.category||''}; ${x.vendor||''}`,Number(x.amount)||0]));
+ excelXML('finansovyi-otchet-'+today()+'.xls',['Раздел','Показатель / дата','Объект / описание','Сумма, ₽'],rows);
+});
+document.getElementById('printFinance').addEventListener('click',()=>{
+ renderFinance();const w=window.open('','_blank');if(!w){alert('Разрешите всплывающие окна для печати.');return;}
+ const {from,to,oid}=financeRange();const report=document.getElementById('financeReport').innerHTML,objects=document.getElementById('financeByObjects').innerHTML;
+ w.document.open();w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Финансовый отчёт ${esc(from)} — ${esc(to)}</title><style>@page{size:A4;margin:15mm}body{font:12px/1.6 Arial,sans-serif;color:#152238}h1{color:#075ba1}h2{margin-top:30px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border:1px solid #bbc9d9;text-align:left}th{background:#edf4fa}.table-wrap{width:100%}.muted-small{font-size:10px;color:#4c617c}</style></head><body><h1>Мой штаб — финансовый отчёт</h1><p>Период: ${esc(from||'все даты')} — ${esc(to||'все даты')} · Объект: ${esc(oid?objName(oid):'Все объекты')}</p><h2>Итоги</h2>${report}<h2>Данные по объектам</h2>${objects}<script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
+});
+document.getElementById('exportBtn').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({...db,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='moi-shtab-backup-'+today()+'.json';a.click();URL.revokeObjectURL(a.href);document.getElementById('backupStatus').textContent='Резервная копия подготовлена.'});
+document.getElementById('importFile').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;try{const data=JSON.parse(await file.text());const required=['objects','tasks','works','goals','workers','attendance','payments','expenses'];if(!required.every(k=>Array.isArray(data[k])))throw new Error('Структура файла не распознана');if(!confirm('Импорт заменит все текущие данные на этом устройстве. Продолжить?'))return;db={...blank()};required.forEach(k=>db[k]=data[k]);db.schedule=Array.isArray(data.schedule)?data.schedule:[];db.income=Array.isArray(data.income)?data.income:[];db.accountable=Array.isArray(data.accountable)?data.accountable:[];save();document.getElementById('backupStatus').textContent='Данные импортированы.'}catch(err){alert('Не удалось импортировать файл. Выберите JSON-резервную копию из «Мой штаб».')}finally{e.target.value=''}});
+document.querySelectorAll('form').forEach(f=>{if(f.elements.date&&!f.elements.date.value)f.elements.date.value=today()});
+['reportDate','payTo','expenseTo','financeTo','cashTo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today()});['payFrom','expenseFrom','financeFrom','cashFrom'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today().slice(0,7)+'-01'});['scheduleForm'].forEach(id=>{const f=document.getElementById(id);if(f){f.elements.start.value=today();f.elements.end.value=today()}});
+renderAll();
+</script>
+</body>
+</html>
