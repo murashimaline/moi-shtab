@@ -50,10 +50,10 @@ function validate(data,{links=true}={}){
  }
  for(const [month,r] of Object.entries(next.advanceReports))if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!object(r)||typeof r.status!=='string')fail('advanceReports.'+month);
  if(links)for(const k of collections)for(const r of next[k]){
-  for(const [field,target] of [['objectId','objects'],['workerId','workers'],['itemId','warehouse']])if(r[field]&&!next[target].some(x=>x.id===r[field]))fail(k+'.'+field);
+  for(const [field,target] of [['objectId','objects'],['workerId','workers'],['itemId','warehouse'],['paymentId','payments']])if(r[field]&&!next[target].some(x=>x.id===r[field]))fail(k+'.'+field+' — ссылка должна вести на существующую запись; удаление связанных записей запрещено');
   if(['attendance','payments'].includes(k)&&!r.workerId)fail(k+'.workerId');
   if(k==='warehouseMovements'&&!r.itemId)fail(k+'.itemId');
-  for(const id of r.workerIds||[])if(!next.workers.some(x=>x.id===id))fail(k+'.workerIds');
+  for(const id of r.workerIds||[])if(!next.workers.some(x=>x.id===id))fail(k+'.workerIds — ссылка должна вести на существующего сотрудника; удаление связанных записей запрещено');
  }
  return next;
 }
@@ -67,7 +67,9 @@ function create(storage,key,empty){
    try{
     if(blocked&&!importing)throw Error('База не загружена. Сначала восстановите резервную копию.');
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
-    const next=validate(candidate,{links:importing});
+    // Every successful save must be restorable with the same strict validator.
+    // Reject dangling references rather than cascading away historical records.
+    const next=validate(candidate);
     protectClosedReports(confirmed,next);
     protectSalaryExpenses(confirmed,next,{importing});
     const history=importing?[...(confirmed.financeHistory||[]),...(next.financeHistory||[])]:confirmed.financeHistory||[];
