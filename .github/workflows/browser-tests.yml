@@ -1,0 +1,29 @@
+name: Browser finance and payroll regressions
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm install --no-save --package-lock=false playwright@1.62.1
+      - run: npx playwright install --with-deps chromium
+      - run: node tests/browser-payroll.cjs
+        env:
+          BROWSER_CHANNEL: chromium
+      - run: node tests/browser-finance.cjs
+        env:
+          BROWSER_CHANNEL: chromium
+      - run: python tests/check-finance-exports.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-browser-results
+          path: .browser-results/
