@@ -537,11 +537,11 @@ function advanceReportModel(){
  const missing=m.costs.filter(x=>expenseDocumentStatus(x)==='missing'),pending=m.costs.reduce((n,x)=>n+expenseDocuments(x).filter(r=>r.verified!==true).length,0);
  return {...range,...m,groups:[...groups.values()].sort((a,b)=>a.name.localeCompare(b.name,'ru')),missing,missingAmount:finRound(amountTotal(missing)),pending,status:db.advanceReports?.[range.month]?.status||'draft'};
 }
-function salaryExpenseHint(x){return /зарплат|з\s*\/\s*п|оплата труда|аванс(?:ы)? рабоч/iu.test([x.category,x.notes].filter(Boolean).join(' '))}
+function salaryExpenseHint(x){return ProrabkaStorage.salaryExpenseHint(x)}
 function possibleSalaryDuplicates(from,to){
  return db.expenses.filter(x=>periodOK(x.date,from,to)).flatMap(x=>{
   const matches=db.payments.filter(p=>['Аванс','Выплата'].includes(p.kind)&&p.date===x.date&&wageCents(p.amount)===wageCents(x.amount));
-  return salaryExpenseHint(x)||matches.length?[{expense:x,payments:matches}]:[];
+  return ProrabkaStorage.salaryExpense(x,db)||matches.length?[{expense:x,payments:matches}]:[];
  });
 }
 function renderAdvanceReport(){
@@ -618,7 +618,7 @@ function initFinanceUpgrade(){
  document.getElementById('expenseForm').addEventListener('submit',e=>{
   e.preventDefault();if(financeReceiptBusy)return;const form=e.currentTarget,x=formData(form),old=db.expenses.find(a=>a.id===x.id),before=db;
   x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){document.getElementById('expenseDocumentMessage').textContent='Укажите положительную сумму расхода.';return}
-  delete x.receipts;delete x.camera;x.receipts=JSON.parse(JSON.stringify(financeReceiptDraft));const record={...old,...x};if(!old&&salaryExpenseHint(record)){document.getElementById('expenseDocumentMessage').textContent='Зарплату и авансы рабочим внесите в разделе «Зарплата», чтобы не учитывать их дважды.';return}db={...db,expenses:old?db.expenses.map(a=>a.id===x.id?record:a):[...db.expenses,record]};
+  delete x.receipts;delete x.camera;x.receipts=JSON.parse(JSON.stringify(financeReceiptDraft));const record={...old,...x};try{ProrabkaStorage.protectSalaryExpenses(before,{...db,expenses:old?db.expenses.map(a=>a.id===x.id?record:a):[...db.expenses,record]})}catch(error){document.getElementById('expenseDocumentMessage').textContent=error.message;return}db={...db,expenses:old?db.expenses.map(a=>a.id===x.id?record:a):[...db.expenses,record]};
   if(!save()){db=before;renderAll();document.getElementById('expenseDocumentMessage').textContent='Расход не сохранён. Прежняя запись сохранена; документы остались в форме.';return}resetForm('expenseForm');document.getElementById('expenseDocumentMessage').textContent='Расход сохранён. Статус: '+expenseDocumentLabel(record)+'.';
  });
  document.getElementById('exportCashExcel').addEventListener('click',()=>exportAdvanceReport());document.getElementById('exportExpensesExcel').addEventListener('click',()=>exportExpensesWithDocuments());document.getElementById('exportMissingExpenses').addEventListener('click',()=>exportExpensesWithDocuments(true));document.getElementById('exportAdvanceMissing').addEventListener('click',()=>exportExpensesWithDocuments(true,true));

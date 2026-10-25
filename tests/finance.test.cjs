@@ -4,7 +4,7 @@ const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
 const blank=()=>({version:3,objects:[{id:'o',name:'Объект'}],workers:[{id:'w',name:'Рабочий',rate:6000}],tasks:[],works:[],goals:[],attendance:[],payments:[],expenses:[],accountable:[],advanceReports:{}});
 const expense=(patch={})=>({id:'e',date:'2026-01-10',amount:'3000',paymentSource:'accountable',objectId:'o',...patch});
 function store(db){let raw=JSON.stringify(db);const disk={fail:false,getItem:()=>raw,setItem:(k,v)=>{if(disk.fail)throw Error('Quota');raw=v}};return {disk,p:create(disk,'db',blank)}}
-function context(db){const c=vm.createContext({db,today:()=> '2026-03-31',finRound:n=>Math.round((Number(n)||0)*100)/100,amountTotal:xs=>xs.reduce((s,x)=>s+Number(x.amount||0),0),periodOK:(d,f,t)=>(!f||d>=f)&&(!t||d<=t)});vm.runInContext(html.slice(html.indexOf('function accountableCalc'),html.indexOf('function advanceMonthRange')),c);vm.runInContext(html.slice(html.indexOf('function cashLedgerRows'),html.indexOf('function renderFinanceHistory')),c);return c}
+function context(db){const c=vm.createContext({db,ProrabkaStorage:require('../storage.js'),today:()=> '2026-03-31',finRound:n=>Math.round((Number(n)||0)*100)/100,amountTotal:xs=>xs.reduce((s,x)=>s+Number(x.amount||0),0),periodOK:(d,f,t)=>(!f||d>=f)&&(!t||d<=t)});vm.runInContext(html.slice(html.indexOf('function accountableCalc'),html.indexOf('function advanceMonthRange')),c);vm.runInContext(html.slice(html.indexOf('function cashLedgerRows'),html.indexOf('function renderFinanceHistory')),c);return c}
 test('cash carries through empty month, year boundary and partial periods without income or other sources',()=>{
  const db=blank();db.accountable=[{id:'r',date:'2025-12-31',kind:'receipt',amount:'10000'},{id:'r2',date:'2026-02-01',kind:'receipt',amount:2000},{id:'ret',date:'2026-02-28',kind:'return',amount:500}];db.expenses=[expense({date:'2025-12-31'}),expense({id:'f',date:'2026-02-10',amount:1000}),expense({id:'other',amount:999,paymentSource:'other'}),expense({id:'unknown',amount:100,paymentSource:''})];db.payments=[{id:'p',date:'2026-02-10',kind:'Аванс',amount:500,paymentSource:'accountable'},{id:'fine',date:'2026-02-10',kind:'Штраф',amount:300,paymentSource:'accountable'}];db.income=[{id:'i',date:'2026-02-10',amount:99999}];const c=context(db),before=JSON.stringify(db);
  assert.equal(c.accountableCalc('2026-01-01','2026-01-31').overall,7000);const feb=c.accountableCalc('2026-02-01','2026-02-28');assert.deepEqual([feb.opening,feb.receipts,feb.spent,feb.wageSpent,feb.returns,feb.net,feb.overall],[7000,2000,1000,500,500,0,7000]);assert.equal(c.accountableCalc('2026-03-01','2026-03-31').opening,7000);assert.equal(c.accountableCalc('2026-02-11','2026-02-28').opening,7500);assert.equal(JSON.stringify(db),before);
@@ -27,3 +27,27 @@ test('audit atomic on quota error, append only, reload and JSON import preserve 
 });
 test('legacy fractional cash uses unchanged category rounding in final running balance',()=>{const db=blank();db.accountable=[{id:'r',date:'2026-01-01',kind:'receipt',amount:0.01}];db.expenses=[expense({amount:0.005})];db.payments=[{id:'p',date:'2026-01-20',kind:'Выплата',paymentSource:'accountable',amount:0.005}];const c=context(db),m=c.accountableCalc('2026-01-01','2026-01-31');assert.equal(c.cashLedgerRows(m)[0].balance,m.overall)});
 test('possible salary duplicates warn without rewriting old expense or cash payment',()=>{const db=blank();db.expenses=[expense({amount:5000}),expense({id:'salary',notes:'Зарплата бригады',amount:6000}),expense({id:'supplier',notes:'Аванс поставщику',date:'2026-01-11'})];db.payments=[{id:'p',date:'2026-01-10',kind:'Выплата',amount:'5000'}];const c=context(db);c.wageCents=n=>Math.round(Number(n)*100);vm.runInContext(html.slice(html.indexOf('function salaryExpenseHint'),html.indexOf('function renderAdvanceReport')),c);const before=JSON.stringify(db);assert.equal(c.possibleSalaryDuplicates('2026-01-01','2026-01-31').length,2);assert.equal(c.possibleSalaryDuplicates('2026-02-01','2026-02-28').length,0);assert.equal(JSON.stringify(db),before)});
+
+
+test('ordinary expense cannot become payroll through notes/category or linked payment, including import; atomic rejection',()=>{
+ for(const importing of [false,true])for(const patch of [{notes:'Зарплата рабочему'},{category:'Зарплата'},{notes:'з / п'},{notes:'Оплата труда'},{notes:'Аванс рабочему'},{paymentId:'p'}]){
+  const db=blank();db.expenses=[expense({category:'Материалы'})];db.payments=[{id:'p',workerId:'w',date:'2026-01-10',kind:'Выплата',amount:3000,paymentSource:'accountable'}];
+  const {p,disk}=store(db),raw=disk.getItem(),n=p.initial();Object.assign(n.expenses[0],patch);const r=p.commit(n,{importing});assert.equal(r.ok,false);assert.match(r.error,/Зарплата/);assert.equal(disk.getItem(),raw);assert.deepEqual(p.initial().financeHistory,undefined);
+ }
+});
+test('new explicit payroll expenses rejected, coincident legitimate expenses and supplier advances allowed',()=>{
+ const {p}=store(blank());for(const patch of [{category:'Зарплата'},{notes:'Зарплата рабочему'}]){const n=p.initial();n.expenses=[expense(patch)];assert.equal(p.commit(n).ok,false)}
+ let n=p.initial();n.payments=[{id:'p',workerId:'w',date:'2026-01-10',kind:'Выплата',amount:3000,paymentSource:'accountable'}];n.expenses=[expense({category:'Питание',workerId:'w',notes:'Обед бригады'}),expense({id:'supplier',notes:'Аванс поставщику'})];assert.equal(p.commit(n).ok,true);
+});
+test('legacy payroll remains unchanged on load/import; receipts allowed, economic and relationship changes blocked',()=>{
+ const db=blank();db.expenses=[expense({category:'Зарплата'})];const {p,disk}=store(db);assert.equal(p.initial().expenses[0].amount,'3000');let n=p.initial();n.expenses[0].receipts=[{name:'Чек',data:'data:text/plain;base64,QQ=='}];assert.equal(p.commit(n).ok,true);
+ for(const patch of [{amount:4000},{date:'2026-02-01'},{paymentSource:'other'},{objectId:''},{workerId:'w'},{paymentId:'p'}]){n=p.initial();Object.assign(n.expenses[0],patch);const raw=disk.getItem();assert.equal(p.commit(n).ok,false);assert.equal(disk.getItem(),raw)}
+ n=p.initial();assert.equal(p.commit(n,{importing:true}).ok,true);n=p.initial();n.expenses[0].category='Материалы';assert.equal(p.commit(n).ok,true);
+});
+test('changing a linked non-wage payment into wage cannot convert an ordinary expense indirectly',()=>{
+ const db=blank();db.expenses=[expense({paymentId:'p'})];db.payments=[{id:'p',workerId:'w',date:'2026-01-10',kind:'Удержание',amount:3000}];const {p}=store(db);const n=p.initial();n.payments[0].kind='Выплата';assert.equal(p.commit(n).ok,false);
+});
+
+test('historical JSON restore into a fresh store retains salary rows, sums and warnings without rewriting',()=>{
+ const backup=blank();backup.expenses=[expense({category:'Зарплата',notes:'Историческая выплата'})];backup.payments=[{id:'p',workerId:'w',date:'2026-01-10',kind:'Выплата',amount:3000,paymentSource:'accountable'}];const {p}=store(blank());assert.equal(p.commit(backup,{importing:true}).ok,true);assert.deepEqual(p.initial().expenses,backup.expenses);const n=p.initial();n.expenses[0].amount=6000;assert.equal(p.commit(n,{importing:true}).ok,false);
+});

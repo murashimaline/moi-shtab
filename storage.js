@@ -69,6 +69,7 @@ function create(storage,key,empty){
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
     const next=validate(candidate,{links:importing});
     protectClosedReports(confirmed,next);
+    protectSalaryExpenses(confirmed,next,{importing});
     const history=importing?[...(confirmed.financeHistory||[]),...(next.financeHistory||[])]:confirmed.financeHistory||[];
     next.financeHistory=[...new Map(history.map(r=>[JSON.stringify(r),r])).values(),...financialChanges(confirmed,next)];
     next._revision={number:(Number(confirmed._revision?.number)||0)+1,token:Date.now().toString(36)+Math.random().toString(36).slice(2)};
@@ -82,6 +83,28 @@ function create(storage,key,empty){
    }catch(e){return {ok:false,value:clone(confirmed),error:e.message}}
   }
  };
+}
+function salaryExpenseHint(row){
+ return /зарплат|з\s*\/\s*п|оплата труда|аванс(?:ы)? рабоч/iu.test([row.category,row.notes].filter(Boolean).join(' '));
+}
+function salaryExpense(row,data){
+ // A direct payment link is evidence; equal dates/amounts alone are not.
+ return salaryExpenseHint(row)||!!row.paymentId&&(data.payments||[]).some(p=>p.id===row.paymentId&&['Аванс','Выплата'].includes(p.kind));
+}
+function protectSalaryExpenses(before,after,{importing=false}={}){
+ const old=new Map((before.expenses||[]).map(row=>[row.id,row]));
+ const economic=row=>JSON.stringify(['date','amount','paymentSource','objectId','workerId','paymentId'].map(k=>k==='amount'?Number(row[k]):row[k]||''));
+ for(const row of after.expenses||[]){
+  if(!salaryExpense(row,after))continue;
+  const previous=old.get(row.id);
+  // JSON restore may contain historical payroll expenses unknown to this store.
+  // Preserve those records under the existing manual-reconciliation policy.
+  // Import must still not convert or move an already known expense.
+  if(importing&&!previous)continue;
+  // Existing historical entries remain readable and may receive documents or
+  // corrections to their description. No new payroll expense or financial move.
+  if(!previous||!salaryExpense(previous,before)||economic(previous)!==economic(row))throw Error('Зарплату и авансы рабочим внесите в разделе «Зарплата», чтобы не учитывать их дважды. Старый расход сверьте вручную.');
+ }
 }
 function financialChanges(before,after){
  const entries=[],at=new Date().toISOString();
@@ -112,5 +135,5 @@ function protectClosedReports(before,after){
   }
  }
 }
-const api={validate,create,protectClosedReports,financialChanges};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
+const api={validate,create,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
 })(globalThis);
