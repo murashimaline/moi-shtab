@@ -312,12 +312,14 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 <div class="panel"><div class="finance-heading"><div><h3>Остатки по объектам</h3><p class="muted-small">Можно отобрать инструменты конкретного объекта или показать все.</p></div><button class="btn" id="exportWarehouseExcel" type="button">Выгрузить склад в Excel (.xls)</button></div><div class="fields"><label>Фильтр по объекту<select id="warehouseObjectFilter"><option value="">Все объекты</option></select></label></div><div id="warehouseList"></div></div>
 <div class="panel" id="warehouse-history"><h3>Журнал движения инструментов</h3><div id="warehouseHistory"></div></div></section>
 <section class="page" id="page-workers"><div class="panel"><h3>Добавить сотрудников из файла</h3><p class="muted-small">Имена из файла добавятся к списку. Существующие записи, ставки и контакты сохранятся.</p><label>Файл сотрудников<input id="workersImportFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="workersImportButton" class="btn secondary" type="button">Добавить сотрудников</button></div><p id="workersImportStatus" class="muted-small" role="status" aria-live="polite"></p></div>
-<div class="panel"><h2>Рабочие</h2><form id="workerForm"><input name="id" type="hidden"/><div class="fields"><label>ФИО *<input name="name" required=""/></label><label>Профессия<input name="trade" placeholder="Каменщик, монтажник..."/></label><label>Ставка за смену, ₽<input min="0" name="rate" step="0.01" type="number" value="0"/></label><label>Телефон (необязательно)<input name="phone" type="tel"/></label></div><div class="actions"><button class="btn">Сохранить рабочего</button><button class="btn secondary" onclick="resetForm('workerForm')" type="button">Очистить</button></div></form></div><div class="panel"><div id="workerList"></div></div></section>
+<div class="panel"><h2>Рабочие</h2><form id="workerForm"><input name="id" type="hidden"/><div class="fields"><label>ФИО *<input name="name" required=""/></label><label>Профессия<input name="trade" placeholder="Каменщик, монтажник..."/></label><label>Ставка за смену, ₽<input min="0" name="rate" step="0.01" type="number" value="0"/></label><label>Телефон (необязательно)<input name="phone" type="tel"/></label></div><p class="notice">Изменение текущей ставки пересчитывает только старые смены без зафиксированной ставки. Уточните их через «Зафиксировать ставку» в табеле. Новые смены сохраняют собственную ставку.</p><div class="actions"><button class="btn">Сохранить рабочего</button><button class="btn secondary" onclick="resetForm('workerForm')" type="button">Очистить</button></div></form></div><div class="panel"><div id="workerList"></div></div></section>
 <section class="page" id="page-timesheet">
+<div class="panel" id="historicalRatePanel" hidden><h2>Зафиксировать историческую ставку</h2><form id="historicalRateForm"><input name="attendanceId" type="hidden"><p id="historicalRateRecord"></p><div class="fields"><label>Ставка этой смены, ₽<input name="rate" type="number" min="0" step="0.01" required></label><label>Основание уточнения<input name="reason" required placeholder="Договорённость, документ, дата ставки"></label></div><p class="notice">Изменится только ставка выбранной записи. Дата, статус, количество смен, штрафы, выплаты и происхождение сохранятся. После фиксации текущая ставка сотрудника не влияет на эту запись.</p><p id="historicalRatePreview" class="muted-small"></p><div class="actions"><button class="btn">Зафиксировать ставку</button><button class="btn secondary" type="button" id="historicalRateCancel">Отмена</button></div><p id="historicalRateStatus" role="status" aria-live="polite"></p></form></div>
 <div class="panel"><h2>Перенести подготовленный табель</h2><p class="muted-small">Загрузите JSON-файл переноса: сотрудники, смены, выплаченные суммы и штрафы. Сначала проверьте расчёт. Повторная загрузка того же файла не создаёт дублей.</p><label>Файл табеля<input id="timesheetImportFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="timesheetPreview" class="btn secondary" type="button">Проверить файл</button><button id="timesheetApply" class="btn" type="button" disabled>Перенести данные</button><button id="timesheetBackup" class="btn secondary" type="button">Сохранить резервную копию</button></div><p id="timesheetImportStatus" role="status" aria-live="polite"></p><div id="timesheetImportPreview"></div><div id="timesheetReview"></div></div>
-<div class="panel"><h2>Табель</h2><form id="attendanceForm"><input name="id" type="hidden"/><div class="fields"><label>Дата *<input name="date" required="" type="date"/></label><label>Рабочий *<select class="worker-select" name="workerId" required=""><option value="">Выберите рабочего</option></select></label><label>Объект<select class="object-select" name="objectId"><option value="">Без объекта</option></select></label><label>Статус<select name="status"><option value="Смена">Полная смена</option><option value="Половина смены">Половина смены</option><option value="Часы">По часам</option><option value="Отсутствовал">Отсутствовал</option></select></label><label>Время смены<select name="shiftType"><option value="unspecified">Не указано</option><option value="day">День</option><option value="night">Ночь</option></select></label><label>Часы<input max="24" min="0" name="hours" step="0.25" type="number" value="8"/></label><label>Смены для расчёта зарплаты<input min="0" name="shifts" step="any" type="number" value="1"/></label><label>Штраф, ₽<input min="0" name="fine" placeholder="0" step="0.01" type="number" value="0"/></label><label>Удержание, ₽<input min="0" name="deduction" placeholder="0" step="0.01" type="number" value="0"/></label><label>Основание штрафа / удержания<input name="adjustmentReason" placeholder="Причина, документ"/></label><label>Примечание<input name="notes"/></label></div><p class="notice">Суммы штрафов и удержаний в табеле автоматически вычитаются из расчётной зарплаты. Не дублируйте их операциями в разделе «Зарплата».</p><div class="actions"><button class="btn">Сохранить запись табеля</button><button class="btn secondary" onclick="resetForm('attendanceForm')" type="button">Очистить</button></div></form></div><div class="panel"><div class="actions"><button class="btn secondary" id="exportTimesheetExcel" type="button">Скачать табель Excel</button></div><div id="attendanceList"></div></div></section>
+<div class="panel"><h2>Табель</h2><form id="attendanceForm"><input name="id" type="hidden"/><div class="fields"><label>Дата *<input name="date" required="" type="date"/></label><label>Рабочий *<select class="worker-select" name="workerId" required=""><option value="">Выберите рабочего</option></select></label><label>Объект<select class="object-select" name="objectId"><option value="">Без объекта</option></select></label><label>Статус<select name="status"><option value="Смена">Полная смена</option><option value="Половина смены">Половина смены</option><option value="Часы">По часам</option><option value="Отсутствовал">Отсутствовал</option></select></label><label>Время смены<select name="shiftType"><option value="unspecified">Не указано</option><option value="day">День</option><option value="night">Ночь</option></select></label><label>Часы<input max="24" min="0" name="hours" step="0.25" type="number" value="8"/></label><label>Смены (по статусу)<input min="0" name="shifts" step="any" type="number" value="1" readonly/></label><label>Штраф, ₽<input min="0" name="fine" placeholder="0" step="0.01" type="number" value="0"/></label><label>Удержание, ₽<input min="0" name="deduction" placeholder="0" step="0.01" type="number" value="0"/></label><label>Основание штрафа / удержания<input name="adjustmentReason" placeholder="Причина, документ"/></label><label>Примечание<input name="notes"/></label></div><p class="notice">Полная смена — 1, половина — 0,5, отсутствие — 0. Ставка фиксируется в новой записи. По часам: сохранённая ставка за смену ÷ 8 × часы. Часы остальных смен — справочные.</p><p class="notice">Суммы штрафов и удержаний в табеле автоматически вычитаются из расчётной зарплаты. Не дублируйте их операциями в разделе «Зарплата».</p><div class="actions"><button class="btn">Сохранить запись табеля</button><button class="btn secondary" onclick="resetForm('attendanceForm')" type="button">Очистить</button></div></form></div><div class="panel"><div class="actions"><button class="btn secondary" id="exportTimesheetExcel" type="button">Скачать табель Excel</button></div><div id="attendanceList"></div></div></section>
 <section class="page" id="page-payroll">
-<div class="panel"><h2>Зарплатная ведомость</h2><div class="fields"><label>Период с<input id="payFrom" type="date"/></label><label>Период по<input id="payTo" type="date"/></label></div><p class="notice">Начисление = ставка за смену × смены. Штрафы и удержания из табеля, а также отдельные операции уменьшают сумму к выплате. Авансы и выплаты учитываются как фактические денежные выплаты. Проверяйте законность и документальное основание любых удержаний.</p><form id="paymentForm"><input name="id" type="hidden"/><div class="fields"><label>Дата *<input name="date" required="" type="date"/></label><label>Рабочий *<select class="worker-select" name="workerId" required=""><option value="">Выберите рабочего</option></select></label><label>Тип операции<select name="kind"><option value="Аванс">Аванс</option><option value="Выплата">Выплата зарплаты</option><option value="Штраф">Штраф</option><option value="Удержание">Удержание</option></select></label><label>Сумма, ₽ *<input min="0.01" name="amount" required="" step="0.01" type="number"/></label><label>Источник выплаты<select id="wagePaymentSource" name="paymentSource"><option value="other">Другие средства</option><option value="accountable">Подотчётные средства</option></select></label><label>Причина / основание<input name="notes" placeholder="Причина, документ, примечание"/></label></div><div class="actions"><button class="btn" id="paymentSaveBtn">Сохранить операцию</button><button class="btn secondary" id="paymentReset" type="button">Очистить</button></div></form><div class="actions"><button class="btn secondary" id="refreshPayroll">Рассчитать ведомость</button></div></div><div class="panel"><div id="payrollList"></div></div><div class="actions"><button class="btn secondary" id="exportPayrollExcel" type="button">Скачать ведомость Excel</button></div><div class="panel"><h3>Операции по выплатам</h3><div id="paymentList"></div></div></section>
+<div class="panel"><h2>Выплатить зарплату за неделю</h2><form id="weeklyPaymentForm"><div class="fields"><label>Дата внутри недели (пн–вс)<input id="weeklyAnchor" type="date" required></label><label>Сотрудник<select id="weeklyWorker"><option value="">Все сотрудники</option></select></label><label>Фактическая дата выплаты<input id="weeklyPaymentDate" type="date" required></label><label>Источник средств<select id="weeklyPaymentSource"><option value="other">Другие средства</option><option value="accountable">Подотчётные средства</option></select></label></div><p class="notice">Начисления недели и общий долг — разные показатели. Долг показан на выбранную фактическую дату выплаты, включая всю доступную историю. Выплата сохраняется по этой дате и не распределяется по месяцам начисления. Пустая сумма или 0 пропускает сотрудника.</p><p id="weeklyRange" class="muted-small"></p><div id="weeklyPayrollPreview"></div><div class="actions"><button class="btn" type="submit">Выплатить зарплату за неделю</button></div><p id="weeklyPaymentStatus" role="status" aria-live="polite"></p></form></div>
+<div class="panel"><h2>Зарплатная ведомость</h2><div class="fields"><label>Период с<input id="payFrom" type="date"/></label><label>Период по<input id="payTo" type="date"/></label></div><p class="notice">Начисление = сохранённая ставка × смены по статусу. Движение периода = начислено − удержания − выплаты внутри периода. Входящий долг — все начисления и выплаты до начала периода. Конечный долг = входящий долг + движение периода. Выплаты учитываются по фактической дате. Отрицательный долг означает переплату. Штрафы и удержания из табеля, а также отдельные операции уменьшают сумму к выплате. Авансы и выплаты учитываются как фактические денежные выплаты. Проверяйте законность и документальное основание любых удержаний.</p><form id="paymentForm"><input name="id" type="hidden"/><div class="fields"><label>Дата *<input name="date" required="" type="date"/></label><label>Рабочий *<select class="worker-select" name="workerId" required=""><option value="">Выберите рабочего</option></select></label><label>Тип операции<select name="kind"><option value="Аванс">Аванс</option><option value="Выплата">Выплата зарплаты</option><option value="Штраф">Штраф</option><option value="Удержание">Удержание</option></select></label><label>Сумма, ₽ *<input min="0.01" name="amount" required="" step="0.01" type="number"/></label><label>Источник выплаты<select id="wagePaymentSource" name="paymentSource"><option value="other">Другие средства</option><option value="accountable">Подотчётные средства</option></select></label><label>Причина / основание<input name="notes" placeholder="Причина, документ, примечание"/></label></div><div class="actions"><button class="btn" id="paymentSaveBtn">Сохранить операцию</button><button class="btn secondary" id="paymentReset" type="button">Очистить</button></div></form><div class="actions"><button class="btn secondary" id="refreshPayroll">Рассчитать ведомость</button></div></div><div class="panel"><div id="payrollList"></div></div><div class="actions"><button class="btn secondary" id="exportPayrollExcel" type="button">Скачать ведомость Excel</button></div><div class="panel"><h3>Операции по выплатам</h3><div id="paymentList"></div></div></section>
 <section class="page" id="page-finance">
 <div class="panel" id="finance-documents"><div class="finance-heading"><div><h2>Контроль документов</h2><p id="documentControlScope" class="muted-small"></p></div><button type="button" id="expensesMissingFilter" class="btn secondary">Без документов</button></div><div class="document-metrics" id="documentControl"></div></div>
 <div class="panel cash-hero" id="finance-accountable">
@@ -362,7 +364,100 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 // Historical timesheet import: additive, validated and repeatable on each device.
 const timesheetNorm=s=>String(s||'').trim().toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ');
 const shiftLabel=t=>({day:'День',night:'Ночь',unspecified:'Не указана'}[t]||'Не указана');
-function attendanceAmount(a){return (Number(a.shifts)||0)*Number(a.ratePerShift??db.workers.find(w=>w.id===a.workerId)?.rate??0)}
+// Payroll rounds each source amount to kopecks, then sums integer kopecks.
+function wageCents(value){
+ const n=Number(value);if(!Number.isFinite(n))throw Error('Некорректная денежная сумма');
+ const [mantissa,exponent='0']=Math.abs(n).toString().split('e'),parts=mantissa.split('.');
+ const digits=BigInt(parts.join('')),scale=(parts[1]?.length||0)-Number(exponent)-2;
+ const divisor=scale>0?10n**BigInt(scale):1n;
+ const cents=scale>0?(digits+divisor/2n)/divisor:digits*10n**BigInt(-scale);
+ if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw Error('Денежная сумма слишком велика');
+ return Math.sign(n)*Number(cents);
+}
+function wageSum(values){return values.reduce((n,v)=>{const total=n+wageCents(v);if(!Number.isSafeInteger(total))throw Error('Денежная сумма слишком велика');return total},0)/100}
+function attendanceShifts(a){if(a.status==='Отсутствовал')return 0;if(a.status==='Половина смены')return 0.5;if(a.status==='Часы'&&a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24)return Number(a.hours)/8;return Number(a.shifts)||0}
+function attendanceRate(a){return a.ratePerShift!=null&&a.ratePerShift!==''?a.ratePerShift:db.workers.find(w=>w.id===a.workerId)?.rate??0}
+function attendanceAmount(a){return wageCents(attendanceShifts(a)*Number(attendanceRate(a)))/100}
+function attendanceWarnings(a){
+ const warnings=[];
+ if(a.status!=='Отсутствовал'&&(a.ratePerShift==null||a.ratePerShift===''))warnings.push('Историческая ставка не зафиксирована; используется текущая ставка сотрудника');
+ const rate=attendanceRate(a);
+ if(a.status!=='Отсутствовал'&&(rate==null||rate===''||Number(rate)===0))warnings.push('Ставка неизвестна или равна нулю');
+ if(a.status==='Часы'&&!(a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24))warnings.push('Часы неизвестны или некорректны; историческое начисление по полю «Смены» требует уточнения');
+ if(a.status==='Отсутствовал'&&Number(a.shifts)>0||a.status==='Половина смены'&&Number(a.shifts)!==0.5)warnings.push('Статус расходится с полем «Смены»; расчёт выполнен по статусу');
+ if(db.attendance.some(b=>b.id!==a.id&&b.workerId===a.workerId&&b.date===a.date&&(a.status==='Отсутствовал'||b.status==='Отсутствовал'||!a.shiftType||a.shiftType==='unspecified'||!b.shiftType||b.shiftType==='unspecified'||a.shiftType===b.shiftType)))warnings.push('Возможный дубль или конфликт смен');
+ return warnings;
+}
+function prepareManualAttendance(input){
+ const old=db.attendance.find(a=>a.id===input.id),x={...old,...input};
+ if(old?.importSourceKey)throw Error('Импортированную смену нельзя изменять вручную: сохраните исходную историю и уточните источник.');
+ if(!['Смена','Половина смены','Отсутствовал','Часы'].includes(x.status))throw Error('Выберите статус смены.');
+ if(x.status==='Часы'&&!(Number(x.hours)>0&&Number(x.hours)<=24))throw Error('Для почасовой оплаты укажите часы: больше 0 и не больше 24.');
+ if(!db.workers.some(w=>w.id===x.workerId))throw Error('Выберите сотрудника.');
+ x.shifts=x.status==='Смена'?1:x.status==='Половина смены'?0.5:x.status==='Часы'?Number(x.hours)/8:0;
+ if(x.status==='Отсутствовал')x.hours=0;
+ if(!old||old.workerId!==x.workerId||old.status==='Отсутствовал'&&x.status!=='Отсутствовал'){const rate=db.workers.find(w=>w.id===x.workerId).rate;if(x.status!=='Отсутствовал'&&(rate==null||rate===''||!(Number(rate)>0)))throw Error('Ставка неизвестна или равна нулю. Уточните ставку сотрудника до сохранения смены.');x.ratePerShift=Number(rate)||0;}
+ else if((old.ratePerShift==null||old.ratePerShift==='')&&x.status!=='Отсутствовал')throw Error('Историческая ставка не зафиксирована. Уточните её через «Зафиксировать ставку» перед редактированием.');
+ if(db.attendance.some(a=>a.id!==x.id&&a.workerId===x.workerId&&a.date===x.date&&(x.status==='Отсутствовал'||a.status==='Отсутствовал'||!a.shiftType||a.shiftType==='unspecified'||!x.shiftType||x.shiftType==='unspecified'||a.shiftType===x.shiftType)))throw Error('Дубль или конфликт: у сотрудника уже есть запись на эту дату и время смены. Сверьте табель.');
+ const dayHours=db.attendance.filter(a=>a.id!==x.id&&a.workerId===x.workerId&&a.date===x.date&&a.status!=='Отсутствовал').reduce((n,a)=>n+(Number(a.hours)||0),Number(x.hours)||0);
+ if(x.status!=='Отсутствовал'&&dayHours>24)throw Error('Конфликт: за сутки указано больше 24 часов. Сверьте смены.');
+ for(const [field,kind] of [['fine','Штраф'],['deduction','Удержание']]){
+  if(!Number.isFinite(Number(x[field]))||Number(x[field])<0)throw Error('Проверьте сумму штрафа / удержания.');
+  x[field]=wageCents(x[field])/100;
+  if(x[field]>0&&db.payments.some(p=>p.workerId===x.workerId&&p.date===x.date&&p.kind===kind&&wageCents(p.amount)===wageCents(x[field])))throw Error('Возможное повторное удержание: такая сумма уже есть в зарплатных операциях.');
+ }
+ return x;
+}
+function confirmedHistoricalRate(id,rate,reason){
+ const old=db.attendance.find(a=>a.id===id);if(!old)throw Error('Запись смены не найдена.');
+ if(rate==null||String(rate).trim()===''||!Number.isFinite(Number(rate))||Number(rate)<0)throw Error('Укажите историческую ставку: 0 или больше.');
+ if(!String(reason||'').trim())throw Error('Укажите основание уточнения ставки.');
+ return {...old,ratePerShift:wageCents(rate)/100,rateBeforeConfirmation:old.rateBeforeConfirmation!==undefined?old.rateBeforeConfirmation:old.ratePerShift??null,rateConfirmationReason:String(reason).trim(),rateConfirmedAt:new Date().toISOString()};
+}
+function payrollWarningHTML(){
+ const warnings=[];
+ for(const id of new Set([...db.attendance,...db.payments].map(a=>a.workerId)))if(!db.workers.some(w=>w.id===id))warnings.push('Удалённый сотрудник '+id+': история включена в ведомость; ставку без снимка восстановить нельзя');
+ warnings.push(...db.attendance.flatMap(a=>attendanceWarnings(a).map(message=>`${a.date} · ${workerName(a.workerId)}: ${message}`)));
+ for(const p of db.payments){try{checkPayment(p)}catch(error){warnings.push(`${p.date} · ${workerName(p.workerId)}: ${error.message}`)}}
+ return warnings.length?'<details open class="notice"><summary>Требуют проверки: '+warnings.length+'</summary><p>Данные сохранены без удаления дублей и без восстановления ставок по предположению. Итоги могут требовать уточнения.</p><ul>'+warnings.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></details>':'';
+}
+function checkPayment(x){
+ if(!(Number(x.amount)>0)||!Number.isFinite(Number(x.amount)))throw Error('Укажите положительную сумму.');
+ if(x.kind==='Выплата'&&x.weeklyWeekStart&&db.payments.some(p=>p.id!==x.id&&p.kind==='Выплата'&&p.workerId===x.workerId&&p.weeklyWeekStart===x.weeklyWeekStart))throw Error('Недельная выплата этому сотруднику уже существует.');
+ if(db.payments.some(p=>p.id!==x.id&&p.workerId===x.workerId&&p.date===x.date&&p.kind===x.kind&&wageCents(p.amount)===wageCents(x.amount)))throw Error('Возможный дубль зарплатной операции. Сверьте существующие записи.');
+ const field=x.kind==='Штраф'?'fine':x.kind==='Удержание'?'deduction':null;
+ if(field&&db.attendance.some(a=>a.workerId===x.workerId&&a.date===x.date&&Number(a[field])>0&&wageCents(a[field])===wageCents(x.amount)))throw Error('Возможное повторное удержание: сумма уже учтена в табеле.');
+}
+function wageWeekRange(anchor){
+ if(!/^\d{4}-\d{2}-\d{2}$/.test(anchor||''))throw Error('Выберите дату недели.');
+ const d=new Date(anchor+'T12:00:00Z');if(!Number.isFinite(d.getTime())||d.toISOString().slice(0,10)!==anchor)throw Error('Некорректная дата.');
+ d.setUTCDate(d.getUTCDate()-(d.getUTCDay()+6)%7);const from=d.toISOString().slice(0,10);d.setUTCDate(d.getUTCDate()+6);return {from,to:d.toISOString().slice(0,10)};
+}
+function weeklyPayroll(anchor,paymentDate,workerId=''){
+ const range=wageWeekRange(anchor);wageWeekRange(paymentDate);
+ const debt=new Map(payrollCalc('',paymentDate).map(x=>[x.w.id,x]));
+ return db.workers.filter(w=>!workerId||w.id===workerId).map(w=>{
+  const period=payrollMovement(w.id,date=>periodOK(date,range.from,range.to));
+  return {w,...range,...period,suggestedPayment:Math.max(0,period.netAccrued),weekPaid:wageSum([period.advances,period.paid]),totalDebt:debt.get(w.id)?.closingDebt||0,
+   warnings:db.attendance.filter(a=>a.workerId===w.id&&(a.date<=paymentDate||periodOK(a.date,range.from,range.to))).flatMap(attendanceWarnings),
+   alreadyPaid:db.payments.some(p=>p.kind==='Выплата'&&p.workerId===w.id&&p.weeklyWeekStart===range.from)};
+ });
+}
+function prepareWeeklyPayments(items,anchor,paymentDate,paymentSource){
+ const range=wageWeekRange(anchor);wageWeekRange(paymentDate);
+ if(!['other','accountable'].includes(paymentSource))throw Error('Выберите источник выплаты.');
+ const ids=new Set(),next=[];
+ for(const item of items){
+  if(ids.has(item.workerId)||!db.workers.some(w=>w.id===item.workerId))throw Error('Проверьте список сотрудников.');ids.add(item.workerId);
+  if(item.amount==null||String(item.amount).trim()==='')continue;
+  if(Number(item.amount)<0)throw Error('Сумма выплаты не может быть отрицательной.');const amount=wageCents(item.amount)/100;if(amount===0)continue;
+  if(db.payments.some(p=>p.kind==='Выплата'&&p.workerId===item.workerId&&p.weeklyWeekStart===range.from))throw Error('Этому сотруднику уже сохранена недельная выплата за '+range.from+'. Проверьте или измените существующую операцию в зарплате.');
+  const x={id:uid(),workerId:item.workerId,date:paymentDate,kind:'Выплата',amount,paymentSource,weeklyWeekStart:range.from,weeklyWeekEnd:range.to,notes:'Еженедельная выплата: '+range.from+' — '+range.to};
+  checkPayment(x);next.push(x);
+ }
+ if(!next.length)throw Error('Укажите хотя бы одну положительную сумму выплаты.');
+ return next;
+}
 
 /* Finance extension. Source documents and actual cash movements are independent. */
 let financeReceiptDraft=[],financeReceiptGeneration=0,financeReceiptBusy=false,financeAdvanceMonth='';
@@ -528,24 +623,46 @@ function renderObjects(){document.getElementById('objectList').innerHTML=table([
 function renderTasks(){const list=[...db.tasks].filter(x=>!activeObjectId||x.objectId===activeObjectId).sort((a,b)=>(a.due||'').localeCompare(b.due||''));document.getElementById('taskList').innerHTML=table(['Задача','Объект','Срок','Статус','Ответственный','Действия'],list.map(x=>{const overdue=x.status!=='Выполнена'&&x.due&&x.due<today();return `<tr><td>${esc(x.title)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.due||'—')} ${overdue?'<span class="tag bad">Просрочена</span>':''}</td><td><span class="tag ${x.status==='Выполнена'?'ok':x.status==='В работе'?'warn':''}">${esc(x.status)}</span></td><td>${esc(x.assignee)}</td><td>${actionBtns('tasks',x,'taskForm')}</td></tr>`}).reverse())}
 function renderWorks(){document.getElementById('workList').innerHTML=table(['Дата','Объект','Вид работ','Объём','Материалы','Рабочих','Фото','Заметки','Действия'],[...db.works].filter(x=>!activeObjectId||x.objectId===activeObjectId).sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.title)}</td><td>${esc(x.volume)}</td><td>${esc(x.materials)}</td><td>${esc(x.workersCount||'—')}${x.workerIds?.length?'<div>'+x.workerIds.map(workerName).map(esc).join(', ')+'</div>':''}</td><td>${(x.photos||[]).map((ph,i)=>`<a href="${ph}" target="_blank" rel="noopener">Фото ${i+1}</a>`).join(', ')||'—'}</td><td>${esc(x.notes)}</td><td>${actionBtns('works',x,'workForm')}</td></tr>`))}
 function renderWorkers(){document.getElementById('workerList').innerHTML=table(['Рабочий','Профессия','Ставка за смену','Телефон','Действия'],db.workers.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.trade)}</td><td>${x.rate==null?'<span class="tag warn">Не указана</span>':money(x.rate)}</td><td>${esc(x.phone)}</td><td>${actionBtns('workers',x,'workerForm')}</td></tr>`))}
-function renderAttendance(){document.getElementById('attendanceList').innerHTML=table(['Дата','Рабочий','Объект','Статус','Время смены','Оплата по исходнику','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание','Действия'],[...db.attendance].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.status)}</td><td>${esc(shiftLabel(x.shiftType))}</td><td>${x.sourcePaid===true?'<span class="tag ok">Выплачено</span>':x.sourcePaid===false?'Не отмечена':'—'}</td><td>${esc(x.hours)}</td><td>${esc(x.shifts)}</td><td>${money(x.fine)}</td><td>${money(x.deduction)}</td><td>${esc(x.adjustmentReason)}</td><td>${esc(x.notes)}</td><td>${actionBtns('attendance',x,'attendanceForm')}</td></tr>`))}
+function renderAttendance(){document.getElementById('attendanceList').innerHTML=payrollWarningHTML()+table(['Дата','Рабочий','Объект','Статус','Время смены','Оплата по исходнику','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание','Действия'],[...db.attendance].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.status)}</td><td>${esc(shiftLabel(x.shiftType))}</td><td>${x.sourcePaid===true?'<span class="tag ok">Выплачено</span>':x.sourcePaid===false?'Не отмечена':'—'}</td><td>${esc(x.hours)}</td><td>${esc(x.shifts)}</td><td>${money(x.fine)}</td><td>${money(x.deduction)}</td><td>${esc(x.adjustmentReason)}</td><td>${esc(x.notes)}</td><td>${actionBtns('attendance',x,'attendanceForm')} <button type="button" class="btn secondary" onclick="openHistoricalRate('${esc(x.id)}')">Зафиксировать ставку</button></td></tr>`))}
 function periodOK(date,from,to){return (!from||date>=from)&&(!to||date<=to)}
 function amountTotal(xs){return xs.reduce((n,x)=>n+(Number(x.amount)||0),0)}
-function payrollCalc(from=document.getElementById('payFrom').value,to=document.getElementById('payTo').value){return db.workers.map(w=>{
- const att=db.attendance.filter(a=>a.workerId===w.id&&periodOK(a.date,from,to));const shifts=att.reduce((s,a)=>s+(Number(a.shifts)||0),0);
- const accrued=att.reduce((n,a)=>n+attendanceAmount(a),0);
- const p=db.payments.filter(a=>a.workerId===w.id&&periodOK(a.date,from,to));
- const advances=amountTotal(p.filter(x=>x.kind==='Аванс'));
- const paid=amountTotal(p.filter(x=>x.kind==='Выплата'));
- const fines=att.reduce((s,x)=>s+(Number(x.fine)||0),0)+amountTotal(p.filter(x=>x.kind==='Штраф'));
- const deductions=att.reduce((s,x)=>s+(Number(x.deduction)||0),0)+amountTotal(p.filter(x=>x.kind==='Удержание'));
- const netAccrued=accrued-fines-deductions;
- return {w,shifts,accrued,fines,deductions,netAccrued,advances,paid,balance:netAccrued-advances-paid};
-})}
+function payrollMovement(workerId,include){
+ const att=db.attendance.filter(a=>a.workerId===workerId&&include(a.date));const shifts=att.reduce((s,a)=>s+attendanceShifts(a),0);
+ const accrued=wageSum(att.map(attendanceAmount));
+ const p=db.payments.filter(a=>a.workerId===workerId&&include(a.date));
+ const advances=wageSum(p.filter(x=>x.kind==='Аванс').map(x=>x.amount));
+ const paid=wageSum(p.filter(x=>x.kind==='Выплата').map(x=>x.amount));
+ const fines=wageSum([...att.map(x=>x.fine||0),...p.filter(x=>x.kind==='Штраф').map(x=>x.amount)]);
+ const deductions=wageSum([...att.map(x=>x.deduction||0),...p.filter(x=>x.kind==='Удержание').map(x=>x.amount)]);
+ const netAccrued=wageSum([accrued,-fines,-deductions]);
+ return {shifts,accrued,fines,deductions,netAccrued,advances,paid,movement:wageSum([netAccrued,-advances,-paid])};
+}
+function payrollCalc(from=document.getElementById('payFrom').value,to=document.getElementById('payTo').value){
+ const workers=[...db.workers],ids=new Set(workers.map(w=>w.id));
+ // Deleted workers must not make historical debt disappear from the ledger.
+ for(const a of [...db.attendance,...db.payments])if(!ids.has(a.workerId)){ids.add(a.workerId);workers.push({id:a.workerId,name:'Удалённый сотрудник ('+a.workerId+')',missing:true})}
+ return workers.map(w=>{
+  const period=payrollMovement(w.id,date=>periodOK(date,from,to));
+  const openingDebt=from?payrollMovement(w.id,date=>date<from).movement:0;
+  const closingDebt=wageSum([openingDebt,period.movement]);
+  return {w,...period,openingDebt,closingDebt,balance:closingDebt};
+ });
+}
 function renderPayroll(){
- const rows=payrollCalc();const totals=rows.reduce((o,x)=>(['accrued','fines','deductions','netAccrued','advances','paid','balance'].forEach(k=>o[k]=(o[k]||0)+x[k]),o),{});
- document.getElementById('payrollList').innerHTML=`<p class="muted-small">Всего начислено: <b>${money(totals.accrued)}</b> · Штрафы: ${money(totals.fines)} · Удержания: ${money(totals.deductions)} · К выдаче с учётом выплат: <b>${money(totals.balance)}</b></p>`+table(['Рабочий','Смены','Начислено','Штрафы','Удержания','После удержаний','Авансы','Выплачено','Остаток'],rows.map(x=>`<tr><td>${esc(x.w.name)}</td><td>${x.shifts.toLocaleString('ru-RU')}</td><td>${money(x.accrued)}</td><td>${money(x.fines)}</td><td>${money(x.deductions)}</td><td>${money(x.netAccrued)}</td><td>${money(x.advances)}</td><td>${money(x.paid)}</td><td><b>${money(x.balance)}</b></td></tr>`));
+ const rows=payrollCalc();const totals=rows.reduce((o,x)=>(['accrued','fines','deductions','netAccrued','advances','paid','openingDebt','movement','closingDebt'].forEach(k=>o[k]=wageSum([o[k]||0,x[k]])),o),{});
+ document.getElementById('payrollList').innerHTML=payrollWarningHTML()+`<p class="muted-small">Всего начислено: <b>${money(totals.accrued)}</b> · Штрафы: ${money(totals.fines)} · Удержания: ${money(totals.deductions)} · Входящий долг: <b>${money(totals.openingDebt)}</b> · Движение периода: <b>${money(totals.movement)}</b> · Конечный долг: <b>${money(totals.closingDebt)}</b></p>`+table(['Рабочий','Смены','Начислено','Штрафы','Удержания','После удержаний','Авансы','Выплачено','Входящий долг','Движение периода','Конечный долг / переплата (−)'],rows.map(x=>`<tr><td>${esc(x.w.name)}</td><td>${x.shifts.toLocaleString('ru-RU')}</td><td>${money(x.accrued)}</td><td>${money(x.fines)}</td><td>${money(x.deductions)}</td><td>${money(x.netAccrued)}</td><td>${money(x.advances)}</td><td>${money(x.paid)}</td><td>${money(x.openingDebt)}</td><td>${money(x.movement)}</td><td><b>${money(x.closingDebt)}</b></td></tr>`));
  document.getElementById('paymentList').innerHTML=table(['Дата','Рабочий','Операция','Сумма','Источник выплаты','Причина / основание','Действия'],[...db.payments].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(x.kind)}</td><td>${money(x.amount)}</td><td>${['Аванс','Выплата'].includes(x.kind)?(x.paymentSource==='accountable'?'Подотчётные':x.paymentSource==='other'?'Другие':'Не указан'):'—'}</td><td>${esc(x.notes)}</td><td>${actionBtns('payments',x,'paymentForm')}</td></tr>`));
+}
+function renderWeeklyPayroll(){
+ const select=document.getElementById('weeklyWorker'),selected=select.value;
+ select.innerHTML='<option value="">Все сотрудники</option>'+db.workers.map(w=>'<option value="'+esc(w.id)+'">'+esc(w.name)+'</option>').join('');select.value=db.workers.some(w=>w.id===selected)?selected:'';
+ const anchor=document.getElementById('weeklyAnchor').value,date=document.getElementById('weeklyPaymentDate').value,el=document.getElementById('weeklyPayrollPreview');
+ if(!anchor||!date){el.innerHTML='<p>Выберите неделю и дату выплаты.</p>';return}
+ try{
+  const rows=weeklyPayroll(anchor,date,select.value),range=wageWeekRange(anchor);
+  document.getElementById('weeklyRange').textContent='Неделя: '+range.from+' — '+range.to+'. Общий долг на '+date+'. По умолчанию предлагается начисление недели после удержаний; сумму можно изменить. Уже выданные деньги показаны отдельно — сверьте выплаты и общий долг.';
+  el.innerHTML=table(['Сотрудник','Начислено за неделю','Штрафы и удержания недели','После удержаний за неделю','Авансы и выплаты за неделю','Общий долг / переплата (−)','Фактическая выплата, ₽'],rows.map(x=>'<tr><td>'+esc(x.w.name)+(x.alreadyPaid?'<br><b>Недельная выплата уже сохранена</b>':'')+(x.warnings.length?'<br><span class="tag warn">Требует сверки: '+esc([...new Set(x.warnings)].join('; '))+'</span>':'')+'</td><td>'+money(x.accrued)+'</td><td>'+money(wageSum([x.fines,x.deductions]))+'</td><td>'+money(x.netAccrued)+'</td><td>'+money(x.weekPaid)+'</td><td>'+money(x.totalDebt)+'</td><td><input aria-label="Выплата: '+esc(x.w.name)+'" data-weekly-worker="'+esc(x.w.id)+'" type="number" min="0" step="0.01" value="'+(x.alreadyPaid?0:x.suggestedPayment)+'" '+(x.alreadyPaid?'disabled':'')+'></td></tr>'));
+ }catch(error){el.textContent=error.message}
 }
 function renderGoals(){document.getElementById('goalList').innerHTML=table(['Цель','Срок','Статус','Действия'],db.goals.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.due||'—')}</td><td>${esc(x.status)}</td><td>${actionBtns('goals',x,'goalForm')}</td></tr>`))}
 
@@ -632,18 +749,18 @@ function financeMetrics(from,to,oid=''){
  const incomes=db.income.filter(x=>periodOK(x.date,from,to)&&(!oid||x.objectId===oid));
  const attendance=db.attendance.filter(x=>periodOK(x.date,from,to)&&(!oid||x.objectId===oid));
  const payments=db.payments.filter(x=>periodOK(x.date,from,to));
- const accrued=attendance.reduce((n,a)=>n+attendanceAmount(a),0);
- const attFines=attendance.reduce((n,a)=>n+(Number(a.fine)||0),0);
- const attDeductions=attendance.reduce((n,a)=>n+(Number(a.deduction)||0),0);
+ const accrued=wageSum(attendance.map(attendanceAmount));
+ const attFines=wageSum(attendance.map(a=>a.fine||0));
+ const attDeductions=wageSum(attendance.map(a=>a.deduction||0));
  // Payment operations cannot be attributed to objects: do not falsely allocate them.
- const opFines=oid?0:amountTotal(payments.filter(x=>x.kind==='Штраф'));
- const opDeductions=oid?0:amountTotal(payments.filter(x=>x.kind==='Удержание'));
- const fines=attFines+opFines,deductions=attDeductions+opDeductions;
- const wagesNet=accrued-fines-deductions;
+ const opFines=oid?0:wageSum(payments.filter(x=>x.kind==='Штраф').map(x=>x.amount));
+ const opDeductions=oid?0:wageSum(payments.filter(x=>x.kind==='Удержание').map(x=>x.amount));
+ const fines=wageSum([attFines,opFines]),deductions=wageSum([attDeductions,opDeductions]);
+ const wagesNet=wageSum([accrued,-fines,-deductions]);
  const expenseSum=amountTotal(expenses),incomeSum=amountTotal(incomes);
- const advances=oid?null:amountTotal(payments.filter(x=>x.kind==='Аванс'));
- const paid=oid?null:amountTotal(payments.filter(x=>x.kind==='Выплата'));
- const cashWages=oid?null:advances+paid;
+ const advances=oid?null:wageSum(payments.filter(x=>x.kind==='Аванс').map(x=>x.amount));
+ const paid=oid?null:wageSum(payments.filter(x=>x.kind==='Выплата').map(x=>x.amount));
+ const cashWages=oid?null:wageSum([advances,paid]);
  return {from,to,oid,expenses,incomes,attendance,accrued,attFines,attDeductions,opFines,opDeductions,fines,deductions,wagesNet,expenseSum,incomeSum,advances,paid,cashWages,estimatedResult:incomeSum-expenseSum-wagesNet,cashFlow:oid?null:incomeSum-expenseSum-cashWages};
 }
 function financeCategories(m){const byCat=new Map();m.expenses.forEach(x=>byCat.set(x.category||'Прочее',(byCat.get(x.category||'Прочее')||0)+(Number(x.amount)||0)));byCat.set('Зарплата после удержаний',m.wagesNet);return [...byCat.entries()].sort((a,b)=>b[1]-a[1]);}
@@ -656,9 +773,9 @@ function financeObjectRows(from,to){
 function financeUnassigned(from,to){ // Separate unassigned data without including all objects.
  const only=collection=>collection.filter(x=>periodOK(x.date,from,to)&&!x.objectId);
  const expenses=only(db.expenses),incomes=only(db.income),attendance=only(db.attendance);
- const accrued=attendance.reduce((n,a)=>n+attendanceAmount(a),0);
- const fines=attendance.reduce((n,a)=>n+(Number(a.fine)||0),0),deductions=attendance.reduce((n,a)=>n+(Number(a.deduction)||0),0);
- const incomeSum=amountTotal(incomes),expenseSum=amountTotal(expenses),wagesNet=accrued-fines-deductions;
+ const accrued=wageSum(attendance.map(attendanceAmount));
+ const fines=wageSum(attendance.map(a=>a.fine||0)),deductions=wageSum(attendance.map(a=>a.deduction||0));
+ const incomeSum=amountTotal(incomes),expenseSum=amountTotal(expenses),wagesNet=wageSum([accrued,-fines,-deductions]);
  return {expenses,incomes,attendance,accrued,fines,deductions,incomeSum,expenseSum,wagesNet,estimatedResult:incomeSum-expenseSum-wagesNet};
 }
 function financeRange(){return {from:document.getElementById('financeFrom').value,to:document.getElementById('financeTo').value,oid:document.getElementById('financeObject').value}}
@@ -692,8 +809,8 @@ function renderExtraAnalytics(){
  document.getElementById('extraAnalytics').innerHTML=blocks.map(([name,value,details])=>`<div class="panel"><div class="section-kicker">${name}</div><strong>${value}</strong><p style="font-size:12px;color:var(--muted);line-height:1.7">${details}</p></div>`).join('');
 }
 function renderStats(){const month=today().slice(0,7);const exp=db.expenses.filter(x=>x.date?.startsWith(month)).reduce((s,x)=>s+Number(x.amount||0),0);const overdue=db.tasks.filter(x=>x.status!=='Выполнена'&&x.due&&x.due<today()).length;document.getElementById('stats').innerHTML=[['Объекты',db.objects.length],['Рабочие',db.workers.length],['Просроченные задачи',overdue],['Расходы в этом месяце',money(exp)]].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
-function renderAll(){if(typeof renderTimesheetReview==='function')renderTimesheetReview();refreshSelects();renderObjects();renderTasks();renderWorks();renderWorkers();renderAttendance();renderPayroll();renderExpenses();renderSchedule();renderStats();renderAnalytics();renderExtraAnalytics();renderFinance();renderFinanceDashboard();renderWarehouse();renderObjectWorkspace()}
-function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;const x=formData(f);if(['taskForm','objectForm'].includes(formId)&&formId==='taskForm'&&activeObjectId)x.objectId=activeObjectId;if(!x.id)x.id=uid();const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=coll==='attendance'?{...db[coll][i],...x}:x;else db[coll].push(x);if(save())resetForm(formId)})}
+function renderAll(){if(typeof renderTimesheetReview==='function')renderTimesheetReview();refreshSelects();renderObjects();renderTasks();renderWorks();renderWorkers();renderAttendance();renderPayroll();renderWeeklyPayroll();renderExpenses();renderSchedule();renderStats();renderAnalytics();renderExtraAnalytics();renderFinance();renderFinanceDashboard();renderWarehouse();renderObjectWorkspace()}
+function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;let x=formData(f);if(['taskForm','objectForm'].includes(formId)&&formId==='taskForm'&&activeObjectId)x.objectId=activeObjectId;if(!x.id)x.id=uid();try{if(coll==='attendance')x=prepareManualAttendance(x)}catch(error){alert(error.message);return}const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=coll==='attendance'?{...db[coll][i],...x}:x;else db[coll].push(x);if(save())resetForm(formId)})}
 
 document.getElementById('workForm').addEventListener('submit',async e=>{
  e.preventDefault();
@@ -714,7 +831,33 @@ submitCollection('objectForm','objects');submitCollection('taskForm','tasks');
 document.getElementById('addSubstep').addEventListener('click',()=>{const row=substepRow();document.getElementById('substepsEditor').appendChild(row);row.querySelector('.sub-title').focus();row.scrollIntoView({behavior:'smooth',block:'nearest'});});
 document.getElementById('scheduleForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);if(activeObjectId)x.objectId=activeObjectId;if(x.end<x.start){alert('Дата окончания этапа раньше начала.');return;}const substeps=collectSubsteps();if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start)){alert('Проверьте название и сроки каждой стадии.');return;}x.id=x.id||uid();x.substeps=substeps;const i=db.schedule.findIndex(a=>a.id===x.id);if(i>=0)db.schedule[i]=x;else db.schedule.push(x);if(save())resetForm('scheduleForm')});submitCollection('workerForm','workers');submitCollection('attendanceForm','attendance');submitCollection('incomeForm','income');
 document.getElementById('accountableForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){alert('Укажите положительную сумму.');return}const i=db.accountable.findIndex(a=>a.id===x.id);if(i>=0)db.accountable[i]=x;else db.accountable.push(x);if(save())resetForm('accountableForm')});
-document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();const x=formData(e.currentTarget);x.id=x.id||uid();x.amount=Number(x.amount);const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]={...db.payments[i],...x};else db.payments.push(x);if(save())resetForm('paymentForm')});
+function syncAttendanceStatus(){const f=document.getElementById('attendanceForm'),status=f.elements.status.value;if(status==='Отсутствовал')f.elements.hours.value='0';f.elements.shifts.value=status==='Часы'?(Number(f.elements.hours.value)||0)/8:({'Смена':1,'Половина смены':0.5,'Отсутствовал':0})[status]??'';}
+document.getElementById('attendanceForm').elements.status.addEventListener('change',syncAttendanceStatus);
+document.getElementById('attendanceForm').elements.hours.addEventListener('input',syncAttendanceStatus);
+document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();let x=formData(e.currentTarget);x.id=x.id||uid();try{x={...db.payments.find(p=>p.id===x.id),...x};checkPayment(x);x.amount=wageCents(x.amount)/100}catch(error){alert(error.message);return}const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]={...db.payments[i],...x};else db.payments.push(x);if(save())resetForm('paymentForm')});
+function openHistoricalRate(id){
+ const a=db.attendance.find(x=>x.id===id);if(!a)return;showPage('timesheet');const panel=document.getElementById('historicalRatePanel'),f=document.getElementById('historicalRateForm');panel.hidden=false;f.elements.attendanceId.value=id;f.elements.rate.value=a.ratePerShift??'';f.elements.reason.value=a.rateConfirmationReason||'';document.getElementById('historicalRateRecord').textContent=a.date+' · '+workerName(a.workerId)+' · '+(a.status||'Историческая запись');document.getElementById('historicalRateStatus').textContent='';previewHistoricalRate();panel.scrollIntoView({block:'start',behavior:'smooth'});
+}
+function previewHistoricalRate(){
+ const f=document.getElementById('historicalRateForm'),a=db.attendance.find(x=>x.id===f.elements.attendanceId.value);if(!a)return;const rate=f.elements.rate.value;
+ document.getElementById('historicalRatePreview').textContent='Начисление сейчас: '+money(attendanceAmount(a))+(rate!==''&&Number(rate)>=0?' · После фиксации: '+money(attendanceAmount({...a,ratePerShift:Number(rate)})):' · Укажите подтверждённую ставку, она не подставляется по предположению.');
+}
+document.getElementById('historicalRateForm').elements.rate.addEventListener('input',previewHistoricalRate);
+document.getElementById('historicalRateCancel').addEventListener('click',()=>{document.getElementById('historicalRatePanel').hidden=true});
+document.getElementById('historicalRateForm').addEventListener('submit',e=>{
+ e.preventDefault();const f=e.currentTarget,status=document.getElementById('historicalRateStatus');
+ try{const next=confirmedHistoricalRate(f.elements.attendanceId.value,f.elements.rate.value,f.elements.reason.value);db.attendance=db.attendance.map(a=>a.id===next.id?next:a);if(save()){status.textContent='Историческая ставка сохранена. Текущая ставка сотрудника больше не влияет на эту запись.';previewHistoricalRate()}else status.textContent='Ставка не сохранена. Введённые значения оставлены для повторной попытки.'}catch(error){status.textContent=error.message}
+});
+document.getElementById('weeklyAnchor').value=today();document.getElementById('weeklyPaymentDate').value=today();
+for(const id of ['weeklyAnchor','weeklyPaymentDate','weeklyWorker'])document.getElementById(id).addEventListener('change',renderWeeklyPayroll);
+document.getElementById('weeklyPaymentForm').addEventListener('submit',e=>{
+ e.preventDefault();const status=document.getElementById('weeklyPaymentStatus');
+ try{
+  const items=Array.from(document.querySelectorAll('[data-weekly-worker]:not(:disabled)')).map(el=>({workerId:el.dataset.weeklyWorker,amount:el.value}));
+  const next=prepareWeeklyPayments(items,document.getElementById('weeklyAnchor').value,document.getElementById('weeklyPaymentDate').value,document.getElementById('weeklyPaymentSource').value);
+  db.payments.push(...next);if(save())status.textContent='Сохранено выплат: '+next.length+'. Сумма: '+money(wageSum(next.map(x=>x.amount)))+'. Дата: '+next[0].date;else status.textContent='Выплата не сохранена. Суммы оставлены для повторной попытки.';
+ }catch(error){status.textContent=error.message}
+});
 document.getElementById('paymentReset').addEventListener('click',()=>resetForm('paymentForm'));
 function readDataURL(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)})}
 /* Mobile navigation: dialog semantics, focus containment and iOS scroll lock. */
@@ -959,8 +1102,8 @@ function excelXML(filename,headers,rows){
  const xml=`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Данные"><Table>${row(headers)}${rows.map(row).join('')}</Table></Worksheet></Workbook>`;
  const blob=new Blob([xml],{type:'application/vnd.ms-excel;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-document.getElementById('exportTimesheetExcel').addEventListener('click',()=>excelXML('tabel-'+today()+'.xls',['Дата','Рабочий','Объект','Статус','Время смены','Оплата по исходнику','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание'],db.attendance.map(x=>[x.date,workerName(x.workerId),objName(x.objectId),x.status,shiftLabel(x.shiftType),x.sourcePaid===true?'Выплачено':x.sourcePaid===false?'Не отмечена':'',x.hours===''?'':Number(x.hours)||0,Number(x.shifts)||0,Number(x.fine)||0,Number(x.deduction)||0,x.adjustmentReason,x.notes])));
-document.getElementById('exportPayrollExcel').addEventListener('click',()=>excelXML('zarplata-'+today()+'.xls',['Рабочий','Смены','Начислено, ₽','Штрафы, ₽','Удержания, ₽','После удержаний, ₽','Авансы, ₽','Выплачено, ₽','Остаток, ₽'],payrollCalc().map(x=>[x.w.name,x.shifts,x.accrued,x.fines,x.deductions,x.netAccrued,x.advances,x.paid,x.balance])));
+document.getElementById('exportTimesheetExcel').addEventListener('click',()=>excelXML('tabel-'+today()+'.xls',['Дата','Рабочий','Объект','Статус','Время смены','Оплата по исходнику','Часы','Смены по расчёту','Штраф, ₽','Удержание, ₽','Основание','Примечание','Исходное поле смен','Сохранённая ставка, ₽','Начислено, ₽','Предупреждения'],db.attendance.map(x=>[x.date,workerName(x.workerId),objName(x.objectId),x.status,shiftLabel(x.shiftType),x.sourcePaid===true?'Выплачено':x.sourcePaid===false?'Не отмечена':'',x.hours===''?'':Number(x.hours)||0,attendanceShifts(x),wageCents(x.fine||0)/100,wageCents(x.deduction||0)/100,x.adjustmentReason,x.notes,x.shifts,x.ratePerShift??'',attendanceAmount(x),attendanceWarnings(x).join('; ')])));
+document.getElementById('exportPayrollExcel').addEventListener('click',()=>excelXML('zarplata-'+today()+'.xls',['Рабочий','Смены','Начислено, ₽','Штрафы, ₽','Удержания, ₽','После удержаний, ₽','Авансы, ₽','Выплачено, ₽','Входящий долг, ₽','Движение периода, ₽','Конечный долг / переплата (−), ₽','Предупреждения'],payrollCalc().map(x=>[x.w.name,x.shifts,x.accrued,x.fines,x.deductions,x.netAccrued,x.advances,x.paid,x.openingDebt,x.movement,x.closingDebt,db.attendance.filter(a=>a.workerId===x.w.id).flatMap(a=>attendanceWarnings(a)).join('; ')])));
 document.getElementById('cashApply').addEventListener('click',()=>renderAccountable());
 document.getElementById('exportFinanceExcel').addEventListener('click',()=>{
  const {from,to,oid}=financeRange(),m=financeMetrics(from,to,oid),rows=[['Период',`${from||'начало'} — ${to||'конец'}`,'',0],['Объект',oid?objName(oid):'Все объекты','',0],['ИТОГО','Поступления','',m.incomeSum],['ИТОГО','Расходы без зарплаты','',m.expenseSum],['ИТОГО','Начислено зарплаты','',m.accrued],['ИТОГО','Штрафы','',m.fines],['ИТОГО','Удержания','',m.deductions],['ИТОГО','Зарплата после удержаний','',m.wagesNet],['ИТОГО','Расчётный результат','',m.estimatedResult]];
@@ -1123,7 +1266,7 @@ function prepareTimesheetImport(p){
  const next=JSON.parse(JSON.stringify(db)),workers=new Map(),stats={workersAdded:0,ratesUpdated:0,entriesAdded:0,paymentsAdded:0,entriesSkipped:0,paymentsSkipped:0};
  for(const w of next.workers){const n=timesheetNorm(w.name);if(names.has(n)&&workers.has(n))fail('В приложении несколько сотрудников с именем «'+w.name+'». Уточните записи перед переносом.');workers.set(n,w)}
  // Keep the amount of existing manual work unchanged when changing the default rate.
- for(const a of next.attendance)if(a.ratePerShift==null)a.ratePerShift=Number(next.workers.find(w=>w.id===a.workerId)?.rate)||0;
+ // Legacy missing rates keep the user-approved live fallback; only explicit confirmation fixes history.
  for(const [n,name] of names){let w=workers.get(n);if(!w){w={id:uid(),name,trade:'',phone:'',rate:6000};next.workers.push(w);workers.set(n,w);stats.workersAdded++}else if(Number(w.rate)!==6000){w.rate=6000;stats.ratesUpdated++}}
  const attKeys=new Map(),payKeys=new Map();
  for(const a of next.attendance)if(a.importSourceKey){if(attKeys.has(a.importSourceKey))fail('В приложении повторяются ранее импортированные смены.');attKeys.set(a.importSourceKey,a)}

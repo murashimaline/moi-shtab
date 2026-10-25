@@ -58,7 +58,7 @@ test('financial calculations survive persistence unchanged, including opening ca
  x.accountable=[{id:'c',date:'2026-01-01',kind:'receipt',amount:'5000'}];
  x.expenses=[{id:'e',date:'2026-01-27',amount:'200.25',paymentSource:'accountable'}];
  function calculate(db){const c=vm.createContext({db});
-  vm.runInContext(html.slice(html.indexOf('function attendanceAmount'),html.indexOf('/* Finance extension')),c);
+  vm.runInContext(html.slice(html.indexOf('function wageCents'),html.indexOf('/* Finance extension')),c);
   vm.runInContext("const finRound=n=>Math.round((Number(n)||0)*100)/100;",c);
   vm.runInContext(html.slice(html.indexOf('function periodOK'),html.indexOf('function renderPayroll')),c);
   vm.runInContext(html.slice(html.indexOf('function accountableCalc'),html.indexOf('function advanceMonthRange')),c);
