@@ -357,6 +357,7 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 
 </main>
 <footer><div class="footer-backup" id="footerBackup"><button class="btn secondary footer-backup-toggle" id="backupToggle" type="button">Резервная копия · экспорт / импорт JSON</button><div hidden="" id="backupDetails"><div class="panel"><h2>Резервное копирование</h2><p>Экспорт сохраняет объекты, график работ и стадии, журнал, рабочих, табель, зарплатные операции, расходы с чеками, поступления и другие данные в один JSON-файл.</p><div class="actions"><button class="btn" id="exportBtn">Экспортировать все данные</button><label class="btn secondary" style="display:inline-flex;justify-content:center;cursor:pointer">Импортировать JSON<input accept=".json,application/json" id="importFile" style="display:none" type="file"/></label></div><p class="notice" style="margin-top:12px">Импорт заменит текущие данные на этом устройстве. Сначала экспортируйте текущую копию. Храните резервные файлы в безопасном месте.</p><div aria-live="polite" id="backupStatus"></div></div></div></div><p class="footer-note">Прорабка 0.9.7 · Данные хранятся только в браузере этого устройства. Сохраняйте резервную копию перед обновлением.</p></footer>
+<script src="storage.js"></script>
 <script>
 // Historical timesheet import: additive, validated and repeatable on each device.
 const timesheetNorm=s=>String(s||'').trim().toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ');
@@ -488,10 +489,26 @@ const KEY='moiShtab_v03';
 const today=()=>new Date().toLocaleDateString('en-CA');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const blank=()=>({version:3,objects:[],tasks:[],works:[],goals:[],workers:[],attendance:[],payments:[],expenses:[],schedule:[],income:[],accountable:[],warehouse:[],warehouseMovements:[]});
+const persistence=ProrabkaStorage.create({getItem:k=>localStorage.getItem(k),setItem:(k,v)=>localStorage.setItem(k,v)},KEY,blank);
 let db=load();
 let activeObjectId="";try{activeObjectId=sessionStorage.getItem("prorabka_object")||""}catch(e){}
-function load(){try{const x=JSON.parse(localStorage.getItem(KEY));return x&&x.version===3?{...blank(),...x,schedule:Array.isArray(x.schedule)?x.schedule:[],income:Array.isArray(x.income)?x.income:[],accountable:Array.isArray(x.accountable)?x.accountable:[],warehouse:Array.isArray(x.warehouse)?x.warehouse:[],warehouseMovements:Array.isArray(x.warehouseMovements)?x.warehouseMovements:[]}:blank()}catch(e){return blank()}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(db));renderAll();return true}catch(err){alert('Не удалось сохранить данные. Возможно, переполнено хранилище браузера из-за фотографий или чеков. Уменьшите файлы, сохраните резервную копию и повторите.');return false}}
+function load(){return persistence.initial()}
+function storageNotice(message){
+ let panel=document.getElementById('storageNotice');
+ if(!panel){panel=document.createElement('div');panel.id='storageNotice';panel.setAttribute('role','alert');panel.style.cssText='position:sticky;top:0;z-index:9999;background:#fff0d0;color:#392700;padding:16px;border:2px solid #a65b00';document.body.prepend(panel)}
+ panel.replaceChildren(document.createTextNode(message+' '));
+ const reload=document.createElement('button');reload.textContent='Перезагрузить';reload.onclick=()=>location.reload();panel.append(reload);
+ const download=document.createElement('button');download.textContent='Скачать исходные данные';download.onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([persistence.status().raw??''],{type:'application/json'}));a.download='prorabka-recovery.json';a.click();URL.revokeObjectURL(a.href)};panel.append(download);
+}
+function save(options){
+ const result=persistence.commit(db,options);db=result.value;
+ if(!result.ok){storageNotice(result.error);alert('Данные не сохранены. '+result.error);return false}
+ document.getElementById('storageNotice')?.remove();
+ try{renderAll()}catch(error){console.error(error);storageNotice('Данные сохранены, но не удалось обновить экран. Перезагрузите страницу.');}
+ return true;
+}
+window.addEventListener('storage',event=>{if(persistence.observe(event))storageNotice('Другая вкладка изменила базу. Запись заблокирована. Сохраните введённое отдельно перед перезагрузкой.');});
+if(persistence.status().blocked)storageNotice('База не загружена: '+persistence.status().error+'. Запись заблокирована. Скачайте исходные данные и восстановите проверенную JSON-копию через импорт. Пустой экран не означает пустую базу.');
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function money(n){return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽'}
 function objName(id){return db.objects.find(x=>x.id===id)?.name||'—'}
@@ -676,7 +693,7 @@ function renderExtraAnalytics(){
 }
 function renderStats(){const month=today().slice(0,7);const exp=db.expenses.filter(x=>x.date?.startsWith(month)).reduce((s,x)=>s+Number(x.amount||0),0);const overdue=db.tasks.filter(x=>x.status!=='Выполнена'&&x.due&&x.due<today()).length;document.getElementById('stats').innerHTML=[['Объекты',db.objects.length],['Рабочие',db.workers.length],['Просроченные задачи',overdue],['Расходы в этом месяце',money(exp)]].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
 function renderAll(){if(typeof renderTimesheetReview==='function')renderTimesheetReview();refreshSelects();renderObjects();renderTasks();renderWorks();renderWorkers();renderAttendance();renderPayroll();renderExpenses();renderSchedule();renderStats();renderAnalytics();renderExtraAnalytics();renderFinance();renderFinanceDashboard();renderWarehouse();renderObjectWorkspace()}
-function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;const x=formData(f);if(['taskForm','objectForm'].includes(formId)&&formId==='taskForm'&&activeObjectId)x.objectId=activeObjectId;if(!x.id)x.id=uid();const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=coll==='attendance'?{...db[coll][i],...x}:x;else db[coll].push(x);resetForm(formId);save()})}
+function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;const x=formData(f);if(['taskForm','objectForm'].includes(formId)&&formId==='taskForm'&&activeObjectId)x.objectId=activeObjectId;if(!x.id)x.id=uid();const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=coll==='attendance'?{...db[coll][i],...x}:x;else db[coll].push(x);if(save())resetForm(formId)})}
 
 document.getElementById('workForm').addEventListener('submit',async e=>{
  e.preventDefault();
@@ -689,15 +706,15 @@ document.getElementById('workForm').addEventListener('submit',async e=>{
    x.photos=files.length?await Promise.all(files.map(readFile)):(existing?.photos||[]);x.workerIds=Array.from(document.getElementById('workWorkerPicker').selectedOptions).map(o=>o.value);
    const i=db.works.findIndex(a=>a.id===x.id);
    if(i>=0)db.works[i]=x;else db.works.push(x);
-   resetForm('workForm');save();
+   if(save())resetForm('workForm');
  }catch(err){alert('Не удалось прочитать одно из фото. Попробуйте выбрать файлы ещё раз.')}
 });
 
 submitCollection('objectForm','objects');submitCollection('taskForm','tasks');
 document.getElementById('addSubstep').addEventListener('click',()=>{const row=substepRow();document.getElementById('substepsEditor').appendChild(row);row.querySelector('.sub-title').focus();row.scrollIntoView({behavior:'smooth',block:'nearest'});});
-document.getElementById('scheduleForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);if(activeObjectId)x.objectId=activeObjectId;if(x.end<x.start){alert('Дата окончания этапа раньше начала.');return;}const substeps=collectSubsteps();if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start)){alert('Проверьте название и сроки каждой стадии.');return;}x.id=x.id||uid();x.substeps=substeps;const i=db.schedule.findIndex(a=>a.id===x.id);if(i>=0)db.schedule[i]=x;else db.schedule.push(x);resetForm('scheduleForm');save()});submitCollection('workerForm','workers');submitCollection('attendanceForm','attendance');submitCollection('incomeForm','income');
-document.getElementById('accountableForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){alert('Укажите положительную сумму.');return}const i=db.accountable.findIndex(a=>a.id===x.id);if(i>=0)db.accountable[i]=x;else db.accountable.push(x);resetForm('accountableForm');save()});
-document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();const x=formData(e.currentTarget);x.id=x.id||uid();x.amount=Number(x.amount);const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]={...db.payments[i],...x};else db.payments.push(x);resetForm('paymentForm');save()});
+document.getElementById('scheduleForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);if(activeObjectId)x.objectId=activeObjectId;if(x.end<x.start){alert('Дата окончания этапа раньше начала.');return;}const substeps=collectSubsteps();if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start)){alert('Проверьте название и сроки каждой стадии.');return;}x.id=x.id||uid();x.substeps=substeps;const i=db.schedule.findIndex(a=>a.id===x.id);if(i>=0)db.schedule[i]=x;else db.schedule.push(x);if(save())resetForm('scheduleForm')});submitCollection('workerForm','workers');submitCollection('attendanceForm','attendance');submitCollection('incomeForm','income');
+document.getElementById('accountableForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){alert('Укажите положительную сумму.');return}const i=db.accountable.findIndex(a=>a.id===x.id);if(i>=0)db.accountable[i]=x;else db.accountable.push(x);if(save())resetForm('accountableForm')});
+document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();const x=formData(e.currentTarget);x.id=x.id||uid();x.amount=Number(x.amount);const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]={...db.payments[i],...x};else db.payments.push(x);if(save())resetForm('paymentForm')});
 document.getElementById('paymentReset').addEventListener('click',()=>resetForm('paymentForm'));
 function readDataURL(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)})}
 /* Mobile navigation: dialog semantics, focus containment and iOS scroll lock. */
@@ -961,7 +978,18 @@ document.getElementById('printFinance').addEventListener('click',()=>{
  w.document.open();w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Финансовый отчёт ${esc(from)} — ${esc(to)}</title><style>@page{size:A4;margin:15mm}body{font:12px/1.6 Arial,sans-serif;color:#152238}h1{color:#075ba1}h2{margin-top:30px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border:1px solid #bbc9d9;text-align:left}th{background:#edf4fa}.table-wrap{width:100%}.muted-small{font-size:10px;color:#4c617c}</style></head><body><h1>Прорабка — финансовый отчёт</h1><p>Период: ${esc(from||'все даты')} — ${esc(to||'все даты')} · Объект: ${esc(oid?objName(oid):'Все объекты')}</p><h2>Итоги</h2>${report}<h2>Данные по объектам</h2>${objects}<script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
 });
 document.getElementById('exportBtn').addEventListener('click',()=>{const blob=new Blob([JSON.stringify({...db,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='prorabka-backup-'+today()+'.json';a.click();URL.revokeObjectURL(a.href);document.getElementById('backupStatus').textContent='Резервная копия подготовлена.'});
-document.getElementById('importFile').addEventListener('change',async e=>{const file=e.target.files[0];if(!file)return;const before=db;try{const data=JSON.parse(await file.text());const required=['objects','tasks','works','goals','workers','attendance','payments','expenses'];if(data.version!==3||!required.every(k=>Array.isArray(data[k])))throw Error('Структура файла не распознана');if(!confirm('Импорт заменит все текущие данные на этом устройстве. Продолжить?'))return;const {exportedAt,...content}=data;db={...blank(),...content};for(const k of ['schedule','income','accountable','warehouse','warehouseMovements','timesheetImports'])db[k]=Array.isArray(data[k])?data[k]:[];db.advanceReports=data.advanceReports&&typeof data.advanceReports==='object'&&!Array.isArray(data.advanceReports)?data.advanceReports:{};if(!save()){db=before;renderAll();return}document.getElementById('backupStatus').textContent='Данные импортированы.'}catch(error){db=before;renderAll();alert('Не удалось импортировать файл. Выберите JSON-резервную копию из «Прорабки».')}finally{e.target.value=''}});
+const previousBackupButton=document.createElement('button');previousBackupButton.type='button';previousBackupButton.className='btn secondary';previousBackupButton.textContent='Скачать копию до импорта';
+previousBackupButton.onclick=()=>{try{const raw=localStorage.getItem(KEY+'_before_import');if(raw===null){alert('Копии до импорта пока нет.');return}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.download='prorabka-before-import.json';a.click();URL.revokeObjectURL(a.href)}catch(error){alert('Не удалось прочитать предыдущую копию. '+error.message)}};
+document.getElementById('exportBtn').after(previousBackupButton);
+document.getElementById('importFile').addEventListener('change',async e=>{
+ const file=e.target.files[0];if(!file)return;
+ try{
+  const candidate=ProrabkaStorage.validate(JSON.parse(await file.text()));
+  if(!confirm('Импорт заменит все текущие данные. Предыдущая копия останется в хранилище. Продолжить?'))return;
+  delete candidate.exportedAt;db=candidate;
+  if(save({importing:true}))document.getElementById('backupStatus').textContent='Данные импортированы. Предыдущая копия: '+KEY+'_before_import.';
+ }catch(error){alert('Не удалось импортировать файл. '+error.message)}finally{e.target.value=''}
+});
 document.querySelectorAll('form').forEach(f=>{if(f.elements.date&&!f.elements.date.value)f.elements.date.value=today()});
 ['reportDate','payTo','expenseTo','financeTo','cashTo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today()});['payFrom','expenseFrom','financeFrom','cashFrom'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today().slice(0,7)+'-01'});['scheduleForm'].forEach(id=>{const f=document.getElementById(id);if(f){f.elements.start.value=today();f.elements.end.value=today()}});
 
@@ -1014,10 +1042,10 @@ function removeWarehouse(id){if(!confirm('Удалить инструмент и
 function removeWarehouseMove(id){const op=db.warehouseMovements.find(x=>x.id===id),it=db.warehouse.find(x=>x.id===op?.itemId);if(!op||!it)return;const newQty=warehouseQty(it)-(['return','restock'].includes(op.kind)?Number(op.qty):-Number(op.qty));if(newQty<0){alert('Нельзя отменить: это сделает остаток отрицательным. Сначала отмените последующие выдачи или списания.');return;}if(confirm('Отменить эту операцию?')){db.warehouseMovements=db.warehouseMovements.filter(x=>x.id!==id);save()}}
 document.getElementById('warehouseItemForm').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,x=formData(form);x.baseQty=Number(x.baseQty);if(!x.objectId||!Number.isInteger(x.baseQty)||x.baseQty<0){alert('Выберите объект и целое количество.');return;}
  const old=db.warehouse.find(it=>it.id===x.id);if(old){const delta=x.baseQty-Number(old.baseQty||0);if(warehouseQty(old)+delta<0){alert('Количество нельзя уменьшить ниже уже выданного или списанного.');return;}}
- x.id=x.id||uid();const i=db.warehouse.findIndex(it=>it.id===x.id);if(i>=0)db.warehouse[i]=x;else db.warehouse.push(x);resetForm('warehouseItemForm');save()});
+ x.id=x.id||uid();const i=db.warehouse.findIndex(it=>it.id===x.id);if(i>=0)db.warehouse[i]=x;else db.warehouse.push(x);if(save())resetForm('warehouseItemForm')});
 document.getElementById('warehouseReset').addEventListener('click',()=>resetForm('warehouseItemForm'));
 document.getElementById('warehouseMoveForm').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,x=formData(form);const it=db.warehouse.find(y=>y.id===x.itemId);x.qty=Number(x.qty);if(!it||!Number.isInteger(x.qty)||x.qty<=0){alert('Выберите инструмент и целое положительное количество.');return;}if(['issue','writeoff'].includes(x.kind)&&warehouseQty(it)<x.qty){alert('Недостаточно инструментов на остатке.');return;}
- x.id=uid();db.warehouseMovements.push(x);form.reset();form.elements.date.value=today();save()});
+ x.id=uid();db.warehouseMovements.push(x);if(save()){form.reset();form.elements.date.value=today()}});
 function warehouseExcel(){
  const escapeXML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
  const cell=v=>`<Cell><Data ss:Type="${typeof v==='number'?'Number':'String'}">${escapeXML(v)}</Data></Cell>`;
