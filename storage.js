@@ -43,6 +43,11 @@ function validate(data,{links=true}={}){
  }
  if(next.advanceReports===undefined)next.advanceReports={};
  if(!object(next.advanceReports))fail('advanceReports');
+ if(next.financeHistory!==undefined&&(!Array.isArray(next.financeHistory)||next.financeHistory.some(r=>!object(r)||['at','collection','id','action','before','after'].some(k=>typeof r[k]!=='string'))))fail('financeHistory');
+ for(const event of next.financeHistory||[])for(const field of ['before','after']){
+  let record;try{record=JSON.parse(event[field])}catch{fail('financeHistory.'+field)}
+  if(record!==null&&(!object(record)||record.receipts!==undefined&&(!Array.isArray(record.receipts)||record.receipts.some(r=>!object(r)||typeof r.name!=='string'))))fail('financeHistory.'+field);
+ }
  for(const [month,r] of Object.entries(next.advanceReports))if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!object(r)||typeof r.status!=='string')fail('advanceReports.'+month);
  if(links)for(const k of collections)for(const r of next[k]){
   for(const [field,target] of [['objectId','objects'],['workerId','workers'],['itemId','warehouse']])if(r[field]&&!next[target].some(x=>x.id===r[field]))fail(k+'.'+field);
@@ -63,6 +68,10 @@ function create(storage,key,empty){
     if(blocked&&!importing)throw Error('База не загружена. Сначала восстановите резервную копию.');
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
     const next=validate(candidate,{links:importing});
+    protectClosedReports(confirmed,next);
+    protectSalaryExpenses(confirmed,next,{importing});
+    const history=importing?[...(confirmed.financeHistory||[]),...(next.financeHistory||[])]:confirmed.financeHistory||[];
+    next.financeHistory=[...new Map(history.map(r=>[JSON.stringify(r),r])).values(),...financialChanges(confirmed,next)];
     next._revision={number:(Number(confirmed._revision?.number)||0)+1,token:Date.now().toString(36)+Math.random().toString(36).slice(2)};
     const encoded=JSON.stringify(next);
     // A single setItem is atomic. Failure leaves the previous primary value intact.
@@ -75,5 +84,56 @@ function create(storage,key,empty){
   }
  };
 }
-const api={validate,create};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
+function salaryExpenseHint(row){
+ return /зарплат|з\s*\/\s*п|оплата труда|аванс(?:ы)? рабоч/iu.test([row.category,row.notes].filter(Boolean).join(' '));
+}
+function salaryExpense(row,data){
+ // A direct payment link is evidence; equal dates/amounts alone are not.
+ return salaryExpenseHint(row)||!!row.paymentId&&(data.payments||[]).some(p=>p.id===row.paymentId&&['Аванс','Выплата'].includes(p.kind));
+}
+function protectSalaryExpenses(before,after,{importing=false}={}){
+ const old=new Map((before.expenses||[]).map(row=>[row.id,row]));
+ const economic=row=>JSON.stringify(['date','amount','paymentSource','objectId','workerId','paymentId'].map(k=>k==='amount'?Number(row[k]):row[k]||''));
+ for(const row of after.expenses||[]){
+  if(!salaryExpense(row,after))continue;
+  const previous=old.get(row.id);
+  // JSON restore may contain historical payroll expenses unknown to this store.
+  // Preserve those records under the existing manual-reconciliation policy.
+  // Import must still not convert or move an already known expense.
+  if(importing&&!previous)continue;
+  // Existing historical entries remain readable and may receive documents or
+  // corrections to their description. No new payroll expense or financial move.
+  if(!previous||!salaryExpense(previous,before)||economic(previous)!==economic(row))throw Error('Зарплату и авансы рабочим внесите в разделе «Зарплата», чтобы не учитывать их дважды. Старый расход сверьте вручную.');
+ }
+}
+function financialChanges(before,after){
+ const entries=[],at=new Date().toISOString();
+ const snapshot=row=>JSON.stringify(row==null?null:{...row,...(row.receipts?{receipts:row.receipts.map(({data,...r})=>r)}:{})});
+ for(const collection of ['accountable','expenses','payments','income']){
+  const old=new Map((before[collection]||[]).map(r=>[r.id,r])),fresh=new Map((after[collection]||[]).map(r=>[r.id,r]));
+  for(const id of new Set([...old.keys(),...fresh.keys()]))if(JSON.stringify(old.get(id))!==JSON.stringify(fresh.get(id)))entries.push({at,collection,id,action:!old.has(id)?'create':!fresh.has(id)?'delete':'update',before:snapshot(old.get(id)),after:snapshot(fresh.get(id))});
+ }
+ for(const month of new Set([...Object.keys(before.advanceReports||{}),...Object.keys(after.advanceReports||{})]))if(JSON.stringify(before.advanceReports?.[month])!==JSON.stringify(after.advanceReports?.[month]))entries.push({at,collection:'advanceReports',id:month,action:'status',before:JSON.stringify(before.advanceReports?.[month]||null),after:JSON.stringify(after.advanceReports?.[month]||null)});
+ return entries;
+}
+function protectClosedReports(before,after){
+ const closed=Object.keys(before.advanceReports||{}).filter(m=>before.advanceReports[m].status==='approved').sort();
+ for(const month of closed){
+  const previous=before.advanceReports[month],next=after.advanceReports?.[month];
+  if(JSON.stringify(previous)!==JSON.stringify(next)){
+   if(month!==closed.at(-1)||!next||!['draft','review'].includes(next.status)||typeof next.reopenReason!=='string'||!next.reopenReason.trim()||next.reopenedAt===previous.reopenedAt)throw Error('Сначала откройте последний закрытый отчёт '+closed.at(-1)+' с указанием причины.');
+  }
+  // Reopening and changing source data must be separate successful saves.
+  const end=month+'-31';
+  for(const collection of ['accountable','expenses','payments']){
+   const old=(before[collection]||[]).filter(r=>r.date<=end),fresh=(after[collection]||[]).filter(r=>r.date<=end);
+   const canonical=rows=>JSON.stringify([...rows].sort((a,b)=>a.id.localeCompare(b.id)));
+   if(canonical(old)!==canonical(fresh))throw Error('Отчёт '+month+' закрыт. Откройте его перед изменением операций или входящего остатка.');
+  }
+  for(const [collection,field,rows] of [['objects','objectId',(before.expenses||[]).filter(r=>r.date<=end&&r.paymentSource==='accountable')],['workers','workerId',(before.payments||[]).filter(r=>r.date<=end&&r.paymentSource==='accountable'&&['Аванс','Выплата'].includes(r.kind))]])for(const id of new Set(rows.map(r=>r[field]).filter(Boolean))){
+   if(before[collection].find(r=>r.id===id)?.name!==after[collection].find(r=>r.id===id)?.name)throw Error('Название используется в закрытом отчёте '+month+'. Сначала откройте отчёт.');
+  }
+ }
+}
+const api={validate,create,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
 })(globalThis);
