@@ -377,7 +377,21 @@ function wageCents(value){
 function wageSum(values){return values.reduce((n,v)=>{const total=n+wageCents(v);if(!Number.isSafeInteger(total))throw Error('Денежная сумма слишком велика');return total},0)/100}
 function attendanceShifts(a){if(a.status==='Отсутствовал')return 0;if(a.status==='Половина смены')return 0.5;if(a.status==='Часы'&&a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24)return Number(a.hours)/8;return Number(a.shifts)||0}
 function attendanceRate(a){return a.ratePerShift!=null&&a.ratePerShift!==''?a.ratePerShift:db.workers.find(w=>w.id===a.workerId)?.rate??0}
-function attendanceAmount(a){return wageCents(attendanceShifts(a)*Number(attendanceRate(a)))/100}
+// Multiply decimal operands before rounding; binary floating point can lose a half kopeck.
+function wageFraction(value){
+ const n=Number(value);if(!Number.isFinite(n))throw Error('Некорректная денежная сумма');
+ const [mantissa,exponent='0']=Math.abs(n).toString().split('e'),parts=mantissa.split('.');
+ const scale=(parts[1]?.length||0)-Number(exponent),digits=BigInt(parts.join(''))*(n<0?-1n:1n);
+ return scale>0?[digits,10n**BigInt(scale)]:[digits*10n**BigInt(-scale),1n];
+}
+function attendanceAmount(a){
+ const hourly=a.status==='Часы'&&a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24;
+ const [rate,rateScale]=wageFraction(attendanceRate(a)),[units,unitScale]=wageFraction(hourly?a.hours:attendanceShifts(a));
+ const numerator=rate*units*100n,denominator=rateScale*unitScale*(hourly?8n:1n),absolute=numerator<0n?-numerator:numerator;
+ const cents=(absolute*2n+denominator)/(2n*denominator);
+ if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw Error('Денежная сумма слишком велика');
+ return (numerator<0n?-1:1)*Number(cents)/100;
+}
 function attendanceWarnings(a){
  const warnings=[];
  if(a.status!=='Отсутствовал'&&(a.ratePerShift==null||a.ratePerShift===''))warnings.push('Историческая ставка не зафиксирована; используется текущая ставка сотрудника');
@@ -653,6 +667,11 @@ function renderPayroll(){
  document.getElementById('payrollList').innerHTML=payrollWarningHTML()+`<p class="muted-small">Всего начислено: <b>${money(totals.accrued)}</b> · Штрафы: ${money(totals.fines)} · Удержания: ${money(totals.deductions)} · Входящий долг: <b>${money(totals.openingDebt)}</b> · Движение периода: <b>${money(totals.movement)}</b> · Конечный долг: <b>${money(totals.closingDebt)}</b></p>`+table(['Рабочий','Смены','Начислено','Штрафы','Удержания','После удержаний','Авансы','Выплачено','Входящий долг','Движение периода','Конечный долг / переплата (−)'],rows.map(x=>`<tr><td>${esc(x.w.name)}</td><td>${x.shifts.toLocaleString('ru-RU')}</td><td>${money(x.accrued)}</td><td>${money(x.fines)}</td><td>${money(x.deductions)}</td><td>${money(x.netAccrued)}</td><td>${money(x.advances)}</td><td>${money(x.paid)}</td><td>${money(x.openingDebt)}</td><td>${money(x.movement)}</td><td><b>${money(x.closingDebt)}</b></td></tr>`));
  document.getElementById('paymentList').innerHTML=table(['Дата','Рабочий','Операция','Сумма','Источник выплаты','Причина / основание','Действия'],[...db.payments].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(x.kind)}</td><td>${money(x.amount)}</td><td>${['Аванс','Выплата'].includes(x.kind)?(x.paymentSource==='accountable'?'Подотчётные':x.paymentSource==='other'?'Другие':'Не указан'):'—'}</td><td>${esc(x.notes)}</td><td>${actionBtns('payments',x,'paymentForm')}</td></tr>`));
 }
+// Draft amounts belong to a week and worker, independently of payment date or visible filter.
+const weeklyPaymentDrafts=new Map();
+document.getElementById('weeklyPayrollPreview').addEventListener('input',event=>{
+ const input=event.target;if(input.matches('[data-weekly-worker]'))weeklyPaymentDrafts.set(input.dataset.weeklyWeek+'|'+input.dataset.weeklyWorker,input.value);
+});
 function renderWeeklyPayroll(){
  const select=document.getElementById('weeklyWorker'),selected=select.value;
  select.innerHTML='<option value="">Все сотрудники</option>'+db.workers.map(w=>'<option value="'+esc(w.id)+'">'+esc(w.name)+'</option>').join('');select.value=db.workers.some(w=>w.id===selected)?selected:'';
@@ -661,7 +680,7 @@ function renderWeeklyPayroll(){
  try{
   const rows=weeklyPayroll(anchor,date,select.value),range=wageWeekRange(anchor);
   document.getElementById('weeklyRange').textContent='Неделя: '+range.from+' — '+range.to+'. Общий долг на '+date+'. По умолчанию предлагается начисление недели после удержаний; сумму можно изменить. Уже выданные деньги показаны отдельно — сверьте выплаты и общий долг.';
-  el.innerHTML=table(['Сотрудник','Начислено за неделю','Штрафы и удержания недели','После удержаний за неделю','Авансы и выплаты за неделю','Общий долг / переплата (−)','Фактическая выплата, ₽'],rows.map(x=>'<tr><td>'+esc(x.w.name)+(x.alreadyPaid?'<br><b>Недельная выплата уже сохранена</b>':'')+(x.warnings.length?'<br><span class="tag warn">Требует сверки: '+esc([...new Set(x.warnings)].join('; '))+'</span>':'')+'</td><td>'+money(x.accrued)+'</td><td>'+money(wageSum([x.fines,x.deductions]))+'</td><td>'+money(x.netAccrued)+'</td><td>'+money(x.weekPaid)+'</td><td>'+money(x.totalDebt)+'</td><td><input aria-label="Выплата: '+esc(x.w.name)+'" data-weekly-worker="'+esc(x.w.id)+'" type="number" min="0" step="0.01" value="'+(x.alreadyPaid?0:x.suggestedPayment)+'" '+(x.alreadyPaid?'disabled':'')+'></td></tr>'));
+  el.innerHTML=table(['Сотрудник','Начислено за неделю','Штрафы и удержания недели','После удержаний за неделю','Авансы и выплаты за неделю','Общий долг / переплата (−)','Фактическая выплата, ₽'],rows.map(x=>'<tr><td>'+esc(x.w.name)+(x.alreadyPaid?'<br><b>Недельная выплата уже сохранена</b>':'')+(x.warnings.length?'<br><span class="tag warn">Требует сверки: '+esc([...new Set(x.warnings)].join('; '))+'</span>':'')+'</td><td>'+money(x.accrued)+'</td><td>'+money(wageSum([x.fines,x.deductions]))+'</td><td>'+money(x.netAccrued)+'</td><td>'+money(x.weekPaid)+'</td><td>'+money(x.totalDebt)+'</td><td><input aria-label="Выплата: '+esc(x.w.name)+'" data-weekly-worker="'+esc(x.w.id)+'" data-weekly-week="'+range.from+'" type="number" min="0" step="0.01" value="'+esc(x.alreadyPaid?0:(weeklyPaymentDrafts.get(range.from+'|'+x.w.id)??x.suggestedPayment))+'" '+(x.alreadyPaid?'disabled':'')+'></td></tr>'));
  }catch(error){el.textContent=error.message}
 }
 function renderGoals(){document.getElementById('goalList').innerHTML=table(['Цель','Срок','Статус','Действия'],db.goals.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.due||'—')}</td><td>${esc(x.status)}</td><td>${actionBtns('goals',x,'goalForm')}</td></tr>`))}
@@ -855,7 +874,7 @@ document.getElementById('weeklyPaymentForm').addEventListener('submit',e=>{
  try{
   const items=Array.from(document.querySelectorAll('[data-weekly-worker]:not(:disabled)')).map(el=>({workerId:el.dataset.weeklyWorker,amount:el.value}));
   const next=prepareWeeklyPayments(items,document.getElementById('weeklyAnchor').value,document.getElementById('weeklyPaymentDate').value,document.getElementById('weeklyPaymentSource').value);
-  db.payments.push(...next);if(save())status.textContent='Сохранено выплат: '+next.length+'. Сумма: '+money(wageSum(next.map(x=>x.amount)))+'. Дата: '+next[0].date;else status.textContent='Выплата не сохранена. Суммы оставлены для повторной попытки.';
+  db.payments.push(...next);if(save()){for(const payment of next)weeklyPaymentDrafts.delete(payment.weeklyWeekStart+'|'+payment.workerId);status.textContent='Сохранено выплат: '+next.length+'. Сумма: '+money(wageSum(next.map(x=>x.amount)))+'. Дата: '+next[0].date}else status.textContent='Выплата не сохранена. Суммы оставлены для повторной попытки.';
  }catch(error){status.textContent=error.message}
 });
 document.getElementById('paymentReset').addEventListener('click',()=>resetForm('paymentForm'));

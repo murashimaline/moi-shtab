@@ -85,3 +85,8 @@ test('manual historical rate confirmation freezes only selected legacy record an
  assert.throws(()=>c.confirmedHistoricalRate('a','','Основание'),/ставку/);assert.throws(()=>c.confirmedHistoricalRate('a',5000,''),/основание/);
 });
 
+test('hourly decimal multiplication rounds exact half kopecks only after division',()=>{
+ const c=context();for(const [rate,hours,expected] of [[5000,3,1875],[5000.04,3,1875.02],[5000.11,12,7500.17],[5000.15,12,7500.23],[0.06,22,0.17]])assert.equal(c.attendanceAmount(row({status:'Часы',ratePerShift:rate,hours})),expected);
+ // Exhaust all quarter-hour inputs for a realistic range of rates against integer arithmetic.
+ for(let cents=500000;cents<=500100;cents++)for(let quarter=1;quarter<=96;quarter++)assert.equal(c.attendanceAmount(row({status:'Часы',ratePerShift:cents/100,hours:quarter/4})),Math.floor((cents*quarter+16)/32)/100);
+});
