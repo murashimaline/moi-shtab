@@ -5,7 +5,7 @@
 <meta charset="utf-8"/>
 <meta content="width=device-width, initial-scale=1, viewport-fit=cover" name="viewport"/>
 <meta content="#0876bc" name="theme-color"/>
-<title>Прорабка 0.9.5 — управление строительными объектами</title>
+<title>Прорабка 0.9.6 — управление строительными объектами</title>
 <style>
 :root{--bg:#f3f5f9;--panel:#fff;--ink:#172033;--muted:#647087;--line:#dce2ec;--accent:#2457c5;--accent2:#e9efff;--danger:#b42318;--ok:#18794e;--warn:#a15c00}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif}
@@ -306,7 +306,8 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 <section class="page" id="page-workers"><div class="panel"><h3>Добавить сотрудников из файла</h3><p class="muted-small">Имена из файла добавятся к списку. Существующие записи, ставки и контакты сохранятся.</p><label>Файл сотрудников<input id="workersImportFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="workersImportButton" class="btn secondary" type="button">Добавить сотрудников</button></div><p id="workersImportStatus" class="muted-small" role="status" aria-live="polite"></p></div>
 <div class="panel"><h2>Рабочие</h2><form id="workerForm"><input name="id" type="hidden"/><div class="fields"><label>ФИО *<input name="name" required=""/></label><label>Профессия<input name="trade" placeholder="Каменщик, монтажник..."/></label><label>Ставка за смену, ₽<input min="0" name="rate" step="0.01" type="number" value="0"/></label><label>Телефон (необязательно)<input name="phone" type="tel"/></label></div><div class="actions"><button class="btn">Сохранить рабочего</button><button class="btn secondary" onclick="resetForm('workerForm')" type="button">Очистить</button></div></form></div><div class="panel"><div id="workerList"></div></div></section>
 <section class="page" id="page-timesheet">
-<div class="panel"><h2>Табель</h2><form id="attendanceForm"><input name="id" type="hidden"/><div class="fields"><label>Дата *<input name="date" required="" type="date"/></label><label>Рабочий *<select class="worker-select" name="workerId" required=""><option value="">Выберите рабочего</option></select></label><label>Объект<select class="object-select" name="objectId"><option value="">Без объекта</option></select></label><label>Статус<select name="status"><option value="Смена">Полная смена</option><option value="Половина смены">Половина смены</option><option value="Часы">По часам</option><option value="Отсутствовал">Отсутствовал</option></select></label><label>Часы<input max="24" min="0" name="hours" step="0.25" type="number" value="8"/></label><label>Смены для расчёта зарплаты<input max="1" min="0" name="shifts" step="0.25" type="number" value="1"/></label><label>Штраф, ₽<input min="0" name="fine" placeholder="0" step="0.01" type="number" value="0"/></label><label>Удержание, ₽<input min="0" name="deduction" placeholder="0" step="0.01" type="number" value="0"/></label><label>Основание штрафа / удержания<input name="adjustmentReason" placeholder="Причина, документ"/></label><label>Примечание<input name="notes"/></label></div><p class="notice">Суммы штрафов и удержаний в табеле автоматически вычитаются из расчётной зарплаты. Не дублируйте их операциями в разделе «Зарплата».</p><div class="actions"><button class="btn">Сохранить запись табеля</button><button class="btn secondary" onclick="resetForm('attendanceForm')" type="button">Очистить</button></div></form></div><div class="panel"><div class="actions"><button class="btn secondary" id="exportTimesheetExcel" type="button">Скачать табель Excel</button></div><div id="attendanceList"></div></div></section>
+<div class="panel"><h2>Перенести подготовленный табель</h2><p class="muted-small">Загрузите JSON-файл переноса: сотрудники, смены, выплаченные суммы и штрафы. Сначала проверьте расчёт. Повторная загрузка того же файла не создаёт дублей.</p><label>Файл табеля<input id="timesheetImportFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="timesheetPreview" class="btn secondary" type="button">Проверить файл</button><button id="timesheetApply" class="btn" type="button" disabled>Перенести данные</button><button id="timesheetBackup" class="btn secondary" type="button">Сохранить резервную копию</button></div><p id="timesheetImportStatus" role="status" aria-live="polite"></p><div id="timesheetImportPreview"></div><div id="timesheetReview"></div></div>
+<div class="panel"><h2>Табель</h2><form id="attendanceForm"><input name="id" type="hidden"/><div class="fields"><label>Дата *<input name="date" required="" type="date"/></label><label>Рабочий *<select class="worker-select" name="workerId" required=""><option value="">Выберите рабочего</option></select></label><label>Объект<select class="object-select" name="objectId"><option value="">Без объекта</option></select></label><label>Статус<select name="status"><option value="Смена">Полная смена</option><option value="Половина смены">Половина смены</option><option value="Часы">По часам</option><option value="Отсутствовал">Отсутствовал</option></select></label><label>Время смены<select name="shiftType"><option value="unspecified">Не указано</option><option value="day">День</option><option value="night">Ночь</option></select></label><label>Часы<input max="24" min="0" name="hours" step="0.25" type="number" value="8"/></label><label>Смены для расчёта зарплаты<input min="0" name="shifts" step="any" type="number" value="1"/></label><label>Штраф, ₽<input min="0" name="fine" placeholder="0" step="0.01" type="number" value="0"/></label><label>Удержание, ₽<input min="0" name="deduction" placeholder="0" step="0.01" type="number" value="0"/></label><label>Основание штрафа / удержания<input name="adjustmentReason" placeholder="Причина, документ"/></label><label>Примечание<input name="notes"/></label></div><p class="notice">Суммы штрафов и удержаний в табеле автоматически вычитаются из расчётной зарплаты. Не дублируйте их операциями в разделе «Зарплата».</p><div class="actions"><button class="btn">Сохранить запись табеля</button><button class="btn secondary" onclick="resetForm('attendanceForm')" type="button">Очистить</button></div></form></div><div class="panel"><div class="actions"><button class="btn secondary" id="exportTimesheetExcel" type="button">Скачать табель Excel</button></div><div id="attendanceList"></div></div></section>
 <section class="page" id="page-payroll">
 <div class="panel"><h2>Зарплатная ведомость</h2><div class="fields"><label>Период с<input id="payFrom" type="date"/></label><label>Период по<input id="payTo" type="date"/></label></div><p class="notice">Начисление = ставка за смену × смены. Штрафы и удержания из табеля, а также отдельные операции уменьшают сумму к выплате. Авансы и выплаты учитываются как фактические денежные выплаты. Проверяйте законность и документальное основание любых удержаний.</p><form id="paymentForm"><input name="id" type="hidden"/><div class="fields"><label>Дата *<input name="date" required="" type="date"/></label><label>Рабочий *<select class="worker-select" name="workerId" required=""><option value="">Выберите рабочего</option></select></label><label>Тип операции<select name="kind"><option value="Аванс">Аванс</option><option value="Выплата">Выплата зарплаты</option><option value="Штраф">Штраф</option><option value="Удержание">Удержание</option></select></label><label>Сумма, ₽ *<input min="0.01" name="amount" required="" step="0.01" type="number"/></label><label>Источник выплаты<select id="wagePaymentSource" name="paymentSource"><option value="other">Другие средства</option><option value="accountable">Подотчётные средства</option></select></label><label>Причина / основание<input name="notes" placeholder="Причина, документ, примечание"/></label></div><div class="actions"><button class="btn" id="paymentSaveBtn">Сохранить операцию</button><button class="btn secondary" id="paymentReset" type="button">Очистить</button></div></form><div class="actions"><button class="btn secondary" id="refreshPayroll">Рассчитать ведомость</button></div></div><div class="panel"><div id="payrollList"></div></div><div class="actions"><button class="btn secondary" id="exportPayrollExcel" type="button">Скачать ведомость Excel</button></div><div class="panel"><h3>Операции по выплатам</h3><div id="paymentList"></div></div></section>
 <section class="page" id="page-finance">
@@ -346,8 +347,13 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 
 
 </main>
-<footer><div class="footer-backup" id="footerBackup"><button class="btn secondary footer-backup-toggle" id="backupToggle" type="button">Резервная копия · экспорт / импорт JSON</button><div hidden="" id="backupDetails"><div class="panel"><h2>Резервное копирование</h2><p>Экспорт сохраняет объекты, график работ и стадии, журнал, рабочих, табель, зарплатные операции, расходы с чеками, поступления и другие данные в один JSON-файл.</p><div class="actions"><button class="btn" id="exportBtn">Экспортировать все данные</button><label class="btn secondary" style="display:inline-flex;justify-content:center;cursor:pointer">Импортировать JSON<input accept=".json,application/json" id="importFile" style="display:none" type="file"/></label></div><p class="notice" style="margin-top:12px">Импорт заменит текущие данные на этом устройстве. Сначала экспортируйте текущую копию. Храните резервные файлы в безопасном месте.</p><div aria-live="polite" id="backupStatus"></div></div></div></div><p class="footer-note">Прорабка 0.9.5 · Данные хранятся только в браузере этого устройства. Сохраняйте резервную копию перед обновлением.</p></footer>
+<footer><div class="footer-backup" id="footerBackup"><button class="btn secondary footer-backup-toggle" id="backupToggle" type="button">Резервная копия · экспорт / импорт JSON</button><div hidden="" id="backupDetails"><div class="panel"><h2>Резервное копирование</h2><p>Экспорт сохраняет объекты, график работ и стадии, журнал, рабочих, табель, зарплатные операции, расходы с чеками, поступления и другие данные в один JSON-файл.</p><div class="actions"><button class="btn" id="exportBtn">Экспортировать все данные</button><label class="btn secondary" style="display:inline-flex;justify-content:center;cursor:pointer">Импортировать JSON<input accept=".json,application/json" id="importFile" style="display:none" type="file"/></label></div><p class="notice" style="margin-top:12px">Импорт заменит текущие данные на этом устройстве. Сначала экспортируйте текущую копию. Храните резервные файлы в безопасном месте.</p><div aria-live="polite" id="backupStatus"></div></div></div></div><p class="footer-note">Прорабка 0.9.6 · Данные хранятся только в браузере этого устройства. Сохраняйте резервную копию перед обновлением.</p></footer>
 <script>
+// Historical timesheet import: additive, validated and repeatable on each device.
+const timesheetNorm=s=>String(s||'').trim().toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ');
+const shiftLabel=t=>({day:'День',night:'Ночь',unspecified:'Не указана'}[t]||'Не указана');
+function attendanceAmount(a){return (Number(a.shifts)||0)*Number(a.ratePerShift??db.workers.find(w=>w.id===a.workerId)?.rate??0)}
+
 const KEY='moiShtab_v03';
 const today=()=>new Date().toLocaleDateString('en-CA');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
@@ -375,12 +381,12 @@ function renderObjects(){document.getElementById('objectList').innerHTML=table([
 function renderTasks(){const list=[...db.tasks].filter(x=>!activeObjectId||x.objectId===activeObjectId).sort((a,b)=>(a.due||'').localeCompare(b.due||''));document.getElementById('taskList').innerHTML=table(['Задача','Объект','Срок','Статус','Ответственный','Действия'],list.map(x=>{const overdue=x.status!=='Выполнена'&&x.due&&x.due<today();return `<tr><td>${esc(x.title)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.due||'—')} ${overdue?'<span class="tag bad">Просрочена</span>':''}</td><td><span class="tag ${x.status==='Выполнена'?'ok':x.status==='В работе'?'warn':''}">${esc(x.status)}</span></td><td>${esc(x.assignee)}</td><td>${actionBtns('tasks',x,'taskForm')}</td></tr>`}).reverse())}
 function renderWorks(){document.getElementById('workList').innerHTML=table(['Дата','Объект','Вид работ','Объём','Материалы','Рабочих','Фото','Заметки','Действия'],[...db.works].filter(x=>!activeObjectId||x.objectId===activeObjectId).sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.title)}</td><td>${esc(x.volume)}</td><td>${esc(x.materials)}</td><td>${esc(x.workersCount||'—')}${x.workerIds?.length?'<div>'+x.workerIds.map(workerName).map(esc).join(', ')+'</div>':''}</td><td>${(x.photos||[]).map((ph,i)=>`<a href="${ph}" target="_blank" rel="noopener">Фото ${i+1}</a>`).join(', ')||'—'}</td><td>${esc(x.notes)}</td><td>${actionBtns('works',x,'workForm')}</td></tr>`))}
 function renderWorkers(){document.getElementById('workerList').innerHTML=table(['Рабочий','Профессия','Ставка за смену','Телефон','Действия'],db.workers.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.trade)}</td><td>${x.rate==null?'<span class="tag warn">Не указана</span>':money(x.rate)}</td><td>${esc(x.phone)}</td><td>${actionBtns('workers',x,'workerForm')}</td></tr>`))}
-function renderAttendance(){document.getElementById('attendanceList').innerHTML=table(['Дата','Рабочий','Объект','Статус','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание','Действия'],[...db.attendance].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.status)}</td><td>${esc(x.hours)}</td><td>${esc(x.shifts)}</td><td>${money(x.fine)}</td><td>${money(x.deduction)}</td><td>${esc(x.adjustmentReason)}</td><td>${esc(x.notes)}</td><td>${actionBtns('attendance',x,'attendanceForm')}</td></tr>`))}
+function renderAttendance(){document.getElementById('attendanceList').innerHTML=table(['Дата','Рабочий','Объект','Статус','Время смены','Оплата по исходнику','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание','Действия'],[...db.attendance].sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(workerName(x.workerId))}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.status)}</td><td>${esc(shiftLabel(x.shiftType))}</td><td>${x.sourcePaid===true?'<span class="tag ok">Выплачено</span>':x.sourcePaid===false?'Не отмечена':'—'}</td><td>${esc(x.hours)}</td><td>${esc(x.shifts)}</td><td>${money(x.fine)}</td><td>${money(x.deduction)}</td><td>${esc(x.adjustmentReason)}</td><td>${esc(x.notes)}</td><td>${actionBtns('attendance',x,'attendanceForm')}</td></tr>`))}
 function periodOK(date,from,to){return (!from||date>=from)&&(!to||date<=to)}
 function amountTotal(xs){return xs.reduce((n,x)=>n+(Number(x.amount)||0),0)}
 function payrollCalc(from=document.getElementById('payFrom').value,to=document.getElementById('payTo').value){return db.workers.map(w=>{
  const att=db.attendance.filter(a=>a.workerId===w.id&&periodOK(a.date,from,to));const shifts=att.reduce((s,a)=>s+(Number(a.shifts)||0),0);
- const accrued=shifts*(Number(w.rate)||0);
+ const accrued=att.reduce((n,a)=>n+attendanceAmount(a),0);
  const p=db.payments.filter(a=>a.workerId===w.id&&periodOK(a.date,from,to));
  const advances=amountTotal(p.filter(x=>x.kind==='Аванс'));
  const paid=amountTotal(p.filter(x=>x.kind==='Выплата'));
@@ -508,7 +514,7 @@ function financeMetrics(from,to,oid=''){
  const incomes=db.income.filter(x=>periodOK(x.date,from,to)&&(!oid||x.objectId===oid));
  const attendance=db.attendance.filter(x=>periodOK(x.date,from,to)&&(!oid||x.objectId===oid));
  const payments=db.payments.filter(x=>periodOK(x.date,from,to));
- const accrued=attendance.reduce((n,a)=>n+(Number(a.shifts)||0)*(Number(db.workers.find(w=>w.id===a.workerId)?.rate)||0),0);
+ const accrued=attendance.reduce((n,a)=>n+attendanceAmount(a),0);
  const attFines=attendance.reduce((n,a)=>n+(Number(a.fine)||0),0);
  const attDeductions=attendance.reduce((n,a)=>n+(Number(a.deduction)||0),0);
  // Payment operations cannot be attributed to objects: do not falsely allocate them.
@@ -532,7 +538,7 @@ function financeObjectRows(from,to){
 function financeUnassigned(from,to){ // Separate unassigned data without including all objects.
  const only=collection=>collection.filter(x=>periodOK(x.date,from,to)&&!x.objectId);
  const expenses=only(db.expenses),incomes=only(db.income),attendance=only(db.attendance);
- const accrued=attendance.reduce((n,a)=>n+(Number(a.shifts)||0)*(Number(db.workers.find(w=>w.id===a.workerId)?.rate)||0),0);
+ const accrued=attendance.reduce((n,a)=>n+attendanceAmount(a),0);
  const fines=attendance.reduce((n,a)=>n+(Number(a.fine)||0),0),deductions=attendance.reduce((n,a)=>n+(Number(a.deduction)||0),0);
  const incomeSum=amountTotal(incomes),expenseSum=amountTotal(expenses),wagesNet=accrued-fines-deductions;
  return {expenses,incomes,attendance,accrued,fines,deductions,incomeSum,expenseSum,wagesNet,estimatedResult:incomeSum-expenseSum-wagesNet};
@@ -568,8 +574,8 @@ function renderExtraAnalytics(){
  document.getElementById('extraAnalytics').innerHTML=blocks.map(([name,value,details])=>`<div class="panel"><div class="section-kicker">${name}</div><strong>${value}</strong><p style="font-size:12px;color:var(--muted);line-height:1.7">${details}</p></div>`).join('');
 }
 function renderStats(){const month=today().slice(0,7);const exp=db.expenses.filter(x=>x.date?.startsWith(month)).reduce((s,x)=>s+Number(x.amount||0),0);const overdue=db.tasks.filter(x=>x.status!=='Выполнена'&&x.due&&x.due<today()).length;document.getElementById('stats').innerHTML=[['Объекты',db.objects.length],['Рабочие',db.workers.length],['Просроченные задачи',overdue],['Расходы в этом месяце',money(exp)]].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
-function renderAll(){refreshSelects();renderObjects();renderTasks();renderWorks();renderWorkers();renderAttendance();renderPayroll();renderExpenses();renderSchedule();renderStats();renderAnalytics();renderExtraAnalytics();renderFinance();renderFinanceDashboard();renderWarehouse();renderObjectWorkspace()}
-function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;const x=formData(f);if(['taskForm','objectForm'].includes(formId)&&formId==='taskForm'&&activeObjectId)x.objectId=activeObjectId;if(!x.id)x.id=uid();const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=x;else db[coll].push(x);resetForm(formId);save()})}
+function renderAll(){if(typeof renderTimesheetReview==='function')renderTimesheetReview();refreshSelects();renderObjects();renderTasks();renderWorks();renderWorkers();renderAttendance();renderPayroll();renderExpenses();renderSchedule();renderStats();renderAnalytics();renderExtraAnalytics();renderFinance();renderFinanceDashboard();renderWarehouse();renderObjectWorkspace()}
+function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;const x=formData(f);if(['taskForm','objectForm'].includes(formId)&&formId==='taskForm'&&activeObjectId)x.objectId=activeObjectId;if(!x.id)x.id=uid();const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=coll==='attendance'?{...db[coll][i],...x}:x;else db[coll].push(x);resetForm(formId);save()})}
 
 document.getElementById('workForm').addEventListener('submit',async e=>{
  e.preventDefault();
@@ -590,7 +596,7 @@ submitCollection('objectForm','objects');submitCollection('taskForm','tasks');
 document.getElementById('addSubstep').addEventListener('click',()=>{const row=substepRow();document.getElementById('substepsEditor').appendChild(row);row.querySelector('.sub-title').focus();row.scrollIntoView({behavior:'smooth',block:'nearest'});});
 document.getElementById('scheduleForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);if(activeObjectId)x.objectId=activeObjectId;if(x.end<x.start){alert('Дата окончания этапа раньше начала.');return;}const substeps=collectSubsteps();if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start)){alert('Проверьте название и сроки каждой стадии.');return;}x.id=x.id||uid();x.substeps=substeps;const i=db.schedule.findIndex(a=>a.id===x.id);if(i>=0)db.schedule[i]=x;else db.schedule.push(x);resetForm('scheduleForm');save()});submitCollection('workerForm','workers');submitCollection('attendanceForm','attendance');submitCollection('incomeForm','income');
 document.getElementById('accountableForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){alert('Укажите положительную сумму.');return}const i=db.accountable.findIndex(a=>a.id===x.id);if(i>=0)db.accountable[i]=x;else db.accountable.push(x);resetForm('accountableForm');save()});
-document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();const x=formData(e.currentTarget);x.id=x.id||uid();x.amount=Number(x.amount);const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]=x;else db.payments.push(x);resetForm('paymentForm');save()});
+document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();const x=formData(e.currentTarget);x.id=x.id||uid();x.amount=Number(x.amount);const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]={...db.payments[i],...x};else db.payments.push(x);resetForm('paymentForm');save()});
 document.getElementById('paymentReset').addEventListener('click',()=>resetForm('paymentForm'));
 function readDataURL(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)})}
 async function processReceipt(file){
@@ -864,7 +870,7 @@ function excelXML(filename,headers,rows){
  const xml=`<?xml version="1.0" encoding="UTF-8"?><?mso-application progid="Excel.Sheet"?><Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"><Worksheet ss:Name="Данные"><Table>${row(headers)}${rows.map(row).join('')}</Table></Worksheet></Workbook>`;
  const blob=new Blob([xml],{type:'application/vnd.ms-excel;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
 }
-document.getElementById('exportTimesheetExcel').addEventListener('click',()=>excelXML('tabel-'+today()+'.xls',['Дата','Рабочий','Объект','Статус','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание'],db.attendance.map(x=>[x.date,workerName(x.workerId),objName(x.objectId),x.status,Number(x.hours)||0,Number(x.shifts)||0,Number(x.fine)||0,Number(x.deduction)||0,x.adjustmentReason,x.notes])));
+document.getElementById('exportTimesheetExcel').addEventListener('click',()=>excelXML('tabel-'+today()+'.xls',['Дата','Рабочий','Объект','Статус','Время смены','Оплата по исходнику','Часы','Смены','Штраф, ₽','Удержание, ₽','Основание','Примечание'],db.attendance.map(x=>[x.date,workerName(x.workerId),objName(x.objectId),x.status,shiftLabel(x.shiftType),x.sourcePaid===true?'Выплачено':x.sourcePaid===false?'Не отмечена':'',x.hours===''?'':Number(x.hours)||0,Number(x.shifts)||0,Number(x.fine)||0,Number(x.deduction)||0,x.adjustmentReason,x.notes])));
 document.getElementById('exportPayrollExcel').addEventListener('click',()=>excelXML('zarplata-'+today()+'.xls',['Рабочий','Смены','Начислено, ₽','Штрафы, ₽','Удержания, ₽','После удержаний, ₽','Авансы, ₽','Выплачено, ₽','Остаток, ₽'],payrollCalc().map(x=>[x.w.name,x.shifts,x.accrued,x.fines,x.deductions,x.netAccrued,x.advances,x.paid,x.balance])));
 document.getElementById('exportExpensesExcel').addEventListener('click',()=>{const from=document.getElementById('expenseFrom').value,to=document.getElementById('expenseTo').value;excelXML('rashody-'+today()+'.xls',['Дата','Объект','Категория','Сумма, ₽','Кому / магазин','Комментарий','Чеки (имена файлов)','Источник оплаты'],db.expenses.filter(x=>periodOK(x.date,from,to)).map(x=>[x.date,objName(x.objectId),x.category,Number(x.amount)||0,x.vendor,x.notes,(x.receipts||[]).map(r=>r.name).join('; '),x.paymentSource==='accountable'?'Подотчётные':x.paymentSource==='other'?'Другие':'Не указан']))});
 
@@ -989,5 +995,95 @@ document.getElementById('workersImportButton').addEventListener('click',async()=
 });
 
 renderAll();
-</script></body>
+</script><script>
+function prepareTimesheetImport(p){
+ const fail=s=>{throw Error(s)};
+ const text=(v,n=200)=>typeof v==='string'&&v.trim().length>0&&v.length<=n;
+ const cents=v=>Math.round(v*100);
+ const amount=v=>typeof v==='number'&&Number.isFinite(v)&&v>=0&&v<=1e10;
+ const validDate=v=>/^2026-(0[5-9]|10)-\d{2}$/.test(v)&&new Date(v+'T00:00:00Z').toISOString().slice(0,10)===v;
+ const key=v=>typeof v==='string'&&/^[tp]26_[a-f0-9]{24}$/.test(v);
+ if(!p||p.kind!=='prorabka-timesheet-v1'||p.year!==2026||p.rate!==6000)fail('Нужен подготовленный файл табеля за 2026 год со ставкой 6000 ₽.');
+ if(!Array.isArray(p.workers)||!p.workers.length||p.workers.length>2000||!Array.isArray(p.entries)||p.entries.length>20000||!Array.isArray(p.payments)||p.payments.length>5000||!Array.isArray(p.review)||p.review.length>2000)fail('Некорректная структура табеля.');
+ const names=new Map(),entries=new Map(),refs=new Set(),keys=new Set(),monthly=new Map();
+ for(const w of p.workers){if(!text(w.name)||w.rate!==6000||names.has(timesheetNorm(w.name)))fail('Некорректный или повторяющийся сотрудник в файле.');names.set(timesheetNorm(w.name),w.name.trim())}
+ const totals={workers:p.workers.length,entries:p.entries.length,payments:p.payments.length,shifts:0,accrued:0,paid:0,fines:0,review:p.review.length};
+ for(const e of p.entries){
+  if(!e||!key(e.sourceKey)||!e.sourceKey.startsWith('t26_')||keys.has(e.sourceKey)||!names.has(timesheetNorm(e.workerName))||!validDate(e.date)||!['day','night','unspecified'].includes(e.shiftType)||!text(e.sheet)||!text(e.cell,20)||!(e.objectName===null||text(e.objectName))||!amount(e.shifts)||e.shifts<=0||e.shifts>24||e.rate!==6000||typeof e.paid!=='boolean'||!amount(e.accrued)||!amount(e.fine)||!amount(e.paidAmount))fail('Некорректная запись смены в файле.');
+  const gross=cents(e.shifts*6000);
+  if(cents(e.accrued)!==gross||cents(e.fine)!==(e.fill==='FF0000'?gross:0)||e.paid!==(e.fill==='00B050')||cents(e.paidAmount)!==(e.paid?gross:0))fail('Суммы или цвета смен не соответствуют правилам переноса.');
+  keys.add(e.sourceKey);entries.set(e.sourceKey,e);
+  let m=monthly.get(e.date.slice(0,7));if(!m){m={month:e.date.slice(0,7),records:0,accrued:0,paid:0,fines:0};monthly.set(m.month,m)}
+  m.records++;m.accrued+=gross;m.paid+=cents(e.paidAmount);m.fines+=cents(e.fine);
+  totals.shifts+=e.shifts;totals.accrued+=gross;totals.paid+=cents(e.paidAmount);totals.fines+=cents(e.fine);
+ }
+ for(const pay of p.payments){
+  if(!pay||!key(pay.sourceKey)||!pay.sourceKey.startsWith('p26_')||keys.has(pay.sourceKey)||!names.has(timesheetNorm(pay.workerName))||!validDate(pay.date)||pay.kind!=='Выплата'||!amount(pay.amount)||pay.amount<=0||!Array.isArray(pay.sourceKeys)||!pay.sourceKeys.length)fail('Некорректная выплата в файле.');
+  const end=new Date(Date.UTC(2026,Number(pay.date.slice(5,7)),0)).toISOString().slice(0,10);
+  if(pay.date!==end)fail('Для выплат из этого файла нужна дата конца соответствующего месяца.');
+  let sum=0;
+  for(const k of pay.sourceKeys){const e=entries.get(k);if(!e||!e.paid||refs.has(k)||timesheetNorm(e.workerName)!==timesheetNorm(pay.workerName)||e.date.slice(0,7)!==pay.date.slice(0,7))fail('Выплата не соответствует оплаченным сменам или содержит дубли.');refs.add(k);sum+=cents(e.paidAmount)}
+  if(sum!==cents(pay.amount))fail('Сумма выплаты не совпадает с оплаченными сменами.');keys.add(pay.sourceKey);
+ }
+ if([...entries.values()].some(e=>e.paid&&!refs.has(e.sourceKey)))fail('Для части оплаченных смен нет выплаты.');
+ for(const r of p.review)if(!r||!text(r.sheet)||!text(r.cell,20)||!validDate(r.date)||!text(r.reason,500)||!text(r.workerName)||!['string','number'].includes(typeof r.rawValue))fail('Некорректная строка для уточнения.');
+ const next=JSON.parse(JSON.stringify(db)),workers=new Map(),stats={workersAdded:0,ratesUpdated:0,entriesAdded:0,paymentsAdded:0,entriesSkipped:0,paymentsSkipped:0};
+ for(const w of next.workers){const n=timesheetNorm(w.name);if(names.has(n)&&workers.has(n))fail('В приложении несколько сотрудников с именем «'+w.name+'». Уточните записи перед переносом.');workers.set(n,w)}
+ // Keep the amount of existing manual work unchanged when changing the default rate.
+ for(const a of next.attendance)if(a.ratePerShift==null)a.ratePerShift=Number(next.workers.find(w=>w.id===a.workerId)?.rate)||0;
+ for(const [n,name] of names){let w=workers.get(n);if(!w){w={id:uid(),name,trade:'',phone:'',rate:6000};next.workers.push(w);workers.set(n,w);stats.workersAdded++}else if(Number(w.rate)!==6000){w.rate=6000;stats.ratesUpdated++}}
+ const attKeys=new Map(),payKeys=new Map();
+ for(const a of next.attendance)if(a.importSourceKey){if(attKeys.has(a.importSourceKey))fail('В приложении повторяются ранее импортированные смены.');attKeys.set(a.importSourceKey,a)}
+ for(const a of next.payments)if(a.importSourceKey){if(payKeys.has(a.importSourceKey))fail('В приложении повторяются ранее импортированные выплаты.');payKeys.set(a.importSourceKey,a)}
+ const objects=new Map();for(const o of next.objects)if(!objects.has(timesheetNorm(o.name)))objects.set(timesheetNorm(o.name),o);
+ const entrySig=e=>JSON.stringify([timesheetNorm(e.workerName),e.date,e.objectName,e.shiftType,e.shifts,e.rate,e.paid,e.fine,e.sheet,e.cell]);
+ for(const e of p.entries){
+  const old=attKeys.get(e.sourceKey),signature=entrySig(e),worker=workers.get(timesheetNorm(e.workerName));
+  if(old){if(old.importFingerprint!==signature)fail('Источник смены '+e.sheet+'!'+e.cell+' изменился после предыдущего переноса. Нужна сверка.');stats.entriesSkipped++;continue}
+  if(next.attendance.some(a=>!a.importSourceKey&&a.workerId===worker.id&&a.date===e.date))fail('Уже есть ручная запись табеля: '+worker.name+', '+e.date+'. Сверьте её перед переносом, чтобы не задвоить смены.');
+  let objectId='';if(e.objectName){const n=timesheetNorm(e.objectName);let o=objects.get(n);if(!o){o={id:uid(),name:e.objectName,address:'',manager:'',notes:'Объект из табеля'};next.objects.push(o);objects.set(n,o)}objectId=o.id}
+  next.attendance.push({id:uid(),date:e.date,workerId:worker.id,objectId,status:e.shifts===0.5?'Половина смены':'Смена',hours:'',shifts:e.shifts,fine:e.fine,deduction:0,adjustmentReason:e.fine?'Красная отметка в исходном табеле':'',notes:e.sheet+'!'+e.cell+' · исходная отметка: '+String(e.rawValue),shiftType:e.shiftType,ratePerShift:6000,sourcePaid:e.paid,importSourceKey:e.sourceKey,importFingerprint:signature});stats.entriesAdded++;
+ }
+ for(const pmt of p.payments){
+  const worker=workers.get(timesheetNorm(pmt.workerName)),old=payKeys.get(pmt.sourceKey),signature=JSON.stringify([timesheetNorm(pmt.workerName),pmt.date,pmt.amount,[...pmt.sourceKeys].sort()]);
+  if(old){if(old.importFingerprint!==signature)fail('Источник выплаты '+worker.name+', '+pmt.date+' изменился. Нужна сверка.');stats.paymentsSkipped++;continue}
+  if(next.payments.some(a=>!a.importSourceKey&&a.workerId===worker.id&&['Аванс','Выплата'].includes(a.kind)&&a.date?.slice(0,7)===pmt.date.slice(0,7)))fail('Уже есть ручная выплата или аванс: '+worker.name+', '+pmt.date.slice(0,7)+'. Сверьте её перед переносом, чтобы не задвоить выплаты.');
+  next.payments.push({id:uid(),date:pmt.date,workerId:worker.id,kind:'Выплата',amount:pmt.amount,paymentSource:'',notes:'Зелёные смены из «Табеля Нагатинская». Конец месяца — разовое правило этого переноса; фактическая дата в исходнике не указана.',importSourceKey:pmt.sourceKey,importFingerprint:signature});stats.paymentsAdded++;
+ }
+ // Review rows are retained in backups, without assigning them to individual staff.
+ const review=p.review.map(r=>({sheet:r.sheet,cell:r.cell,workerName:r.workerName,date:r.date,rawValue:r.rawValue,quantity:r.quantity,paid:r.paid,fine:r.fine,reason:r.reason}));
+ next.timesheetImports=Array.isArray(next.timesheetImports)?next.timesheetImports:[];
+ if(!next.timesheetImports.some(x=>x.id==='nagatinskaya-2026'))next.timesheetImports.push({id:'nagatinskaya-2026',sourceFile:'Табель Нагатинская.xlsx',year:2026,review});
+ for(const k of ['accrued','paid','fines'])totals[k]/=100;totals.balance=totals.accrued-totals.paid-totals.fines;
+ const months=[...monthly.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(m=>({...m,accrued:m.accrued/100,paid:m.paid/100,fines:m.fines/100}));
+ return {next,stats,totals,months};
+}
+function commitTimesheetImport(payload){
+ const plan=prepareTimesheetImport(payload),before=db;db=plan.next;
+ if(!save()){db=before;renderAll();throw Error('Перенос не удалось сохранить. Прежние данные сохранены; освободите место и повторите.');}
+ return plan;
+}
+function timesheetPlanHTML(plan){const {stats:s,totals:t}=plan;
+ return '<p>Добавится: сотрудников <b>'+s.workersAdded+'</b>, записей смен <b>'+s.entriesAdded+'</b>, выплат <b>'+s.paymentsAdded+'</b>. Уже перенесено: смен '+s.entriesSkipped+', выплат '+s.paymentsSkipped+'.</p><p>Ставка — 6000 ₽. Обновится ставок сотрудников: '+s.ratesUpdated+'. Начисления по прежним записям табеля сохранятся.</p>'+table(['Месяц','Записей','Начислено','Выплачено','Штрафы'],plan.months.map(m=>'<tr><td>'+esc(m.month)+'</td><td>'+m.records+'</td><td>'+money(m.accrued)+'</td><td>'+money(m.paid)+'</td><td>'+money(m.fines)+'</td></tr>'))+'<p>В файле: '+t.entries+' записей, '+t.shifts.toLocaleString('ru-RU',{maximumFractionDigits:3})+' смены. Начислено '+money(t.accrued)+', выплачено '+money(t.paid)+', штрафы '+money(t.fines)+'. Остаток '+money(t.balance)+'.</p><p>Строк для уточнения: '+t.review+'. Они сохранятся отдельно, без начисления конкретным сотрудникам. Даты выплат в этом переносе — конец месяца. В дальнейшем дату указываете самостоятельно. Часы не указаны в исходнике.</p>';
+}
+let pendingTimesheet=null;
+const tsInput=document.getElementById('timesheetImportFile'),tsPreview=document.getElementById('timesheetPreview'),tsApply=document.getElementById('timesheetApply'),tsStatus=document.getElementById('timesheetImportStatus'),tsDetails=document.getElementById('timesheetImportPreview');
+tsInput.addEventListener('change',()=>{pendingTimesheet=null;tsApply.disabled=true;tsStatus.textContent='';tsDetails.innerHTML=''});
+tsPreview.addEventListener('click',async()=>{
+ pendingTimesheet=null;tsApply.disabled=true;tsDetails.innerHTML='';tsPreview.disabled=true;
+ try{const f=tsInput.files[0];if(!f)throw Error('Выберите подготовленный JSON-файл табеля.');if(f.size>10*1024*1024)throw Error('Файл слишком большой.');const p=JSON.parse(await f.text()),plan=prepareTimesheetImport(p);pendingTimesheet=p;tsDetails.innerHTML=timesheetPlanHTML(plan);tsApply.disabled=false;tsStatus.textContent='Файл проверен. Нажмите «Перенести данные», чтобы сохранить его в этом браузере.'}
+ catch(e){tsStatus.textContent=e instanceof SyntaxError?'Не удалось прочитать JSON-файл.':e.message}
+ finally{tsPreview.disabled=false}
+});
+tsApply.addEventListener('click',()=>{
+ if(!pendingTimesheet)return;tsApply.disabled=true;
+ try{const plan=commitTimesheetImport(pendingTimesheet);tsDetails.innerHTML=timesheetPlanHTML(plan);tsStatus.textContent='Перенос завершён. Добавлено записей смен: '+plan.stats.entriesAdded+', выплат: '+plan.stats.paymentsAdded+'. Повторный перенос этого файла не создаст дублей.';pendingTimesheet=null;renderTimesheetReview()}
+ catch(e){tsStatus.textContent=e.message}
+});
+document.getElementById('timesheetBackup').addEventListener('click',()=>document.getElementById('exportBtn').click());
+function renderTimesheetReview(){const el=document.getElementById('timesheetReview'),rows=(db.timesheetImports||[]).flatMap(x=>Array.isArray(x.review)?x.review:[]);el.innerHTML=rows.length?'<details><summary>Строки табеля для уточнения ('+rows.length+')</summary><p class="muted-small">Исполнитель не определён. Эти строки не включены в начисления, выплаты и штрафы.</p>'+table(['Лист / ячейка','Дата','Исходная строка','Отметка','Причина'],rows.map(r=>'<tr><td>'+esc(r.sheet+'!'+r.cell)+'</td><td>'+esc(r.date)+'</td><td>'+esc(r.workerName)+'</td><td>'+esc(r.rawValue)+'</td><td>'+esc(r.reason)+'</td></tr>'))+'</details>':''}
+renderTimesheetReview();
+
+</script>
+</body>
 </html>
