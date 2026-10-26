@@ -1327,11 +1327,11 @@ function prepareTimesheetImport(p){
  }
  if([...entries.values()].some(e=>e.paid&&!refs.has(e.sourceKey)))fail('Для части оплаченных смен нет выплаты.');
  for(const r of p.review)if(!r||!text(r.sheet)||!text(r.cell,20)||!validDate(r.date)||!text(r.reason,500)||!text(r.workerName)||!['string','number'].includes(typeof r.rawValue))fail('Некорректная строка для уточнения.');
- const next=JSON.parse(JSON.stringify(db)),workers=new Map(),stats={workersAdded:0,ratesUpdated:0,entriesAdded:0,paymentsAdded:0,entriesSkipped:0,paymentsSkipped:0};
+ const next=JSON.parse(JSON.stringify(db)),workers=new Map(),stats={workersAdded:0,entriesAdded:0,paymentsAdded:0,entriesSkipped:0,paymentsSkipped:0};
  for(const w of next.workers){const n=timesheetNorm(w.name);if(names.has(n)&&workers.has(n))fail('В приложении несколько сотрудников с именем «'+w.name+'». Уточните записи перед переносом.');workers.set(n,w)}
- // Keep the amount of existing manual work unchanged when changing the default rate.
- // Legacy missing rates keep the user-approved live fallback; only explicit confirmation fixes history.
- for(const [n,name] of names){let w=workers.get(n);if(!w){w={id:uid(),name,trade:'',phone:'',rate:6000};next.workers.push(w);workers.set(n,w);stats.workersAdded++}else if(Number(w.rate)!==6000){w.rate=6000;stats.ratesUpdated++}}
+ // Existing worker defaults must not change: legacy shifts without a snapshot use them.
+ // Imported rates belong to new shifts; only new workers receive the import default.
+ for(const [n,name] of names){let w=workers.get(n);if(!w){w={id:uid(),name,trade:'',phone:'',rate:6000};next.workers.push(w);workers.set(n,w);stats.workersAdded++}}
  const attKeys=new Map(),payKeys=new Map();
  for(const a of next.attendance)if(a.importSourceKey){if(attKeys.has(a.importSourceKey))fail('В приложении повторяются ранее импортированные смены.');attKeys.set(a.importSourceKey,a)}
  for(const a of next.payments)if(a.importSourceKey){if(payKeys.has(a.importSourceKey))fail('В приложении повторяются ранее импортированные выплаты.');payKeys.set(a.importSourceKey,a)}
@@ -1342,7 +1342,7 @@ function prepareTimesheetImport(p){
   if(old){if(old.importFingerprint!==signature)fail('Источник смены '+e.sheet+'!'+e.cell+' изменился после предыдущего переноса. Нужна сверка.');stats.entriesSkipped++;continue}
   if(next.attendance.some(a=>!a.importSourceKey&&a.workerId===worker.id&&a.date===e.date))fail('Уже есть ручная запись табеля: '+worker.name+', '+e.date+'. Сверьте её перед переносом, чтобы не задвоить смены.');
   let objectId='';if(e.objectName){const n=timesheetNorm(e.objectName);let o=objects.get(n);if(!o){o={id:uid(),name:e.objectName,address:'',manager:'',notes:'Объект из табеля'};next.objects.push(o);objects.set(n,o)}objectId=o.id}
-  next.attendance.push({id:uid(),date:e.date,workerId:worker.id,objectId,status:e.shifts===0.5?'Половина смены':'Смена',hours:'',shifts:e.shifts,fine:e.fine,deduction:0,adjustmentReason:e.fine?'Красная отметка в исходном табеле':'',notes:e.sheet+'!'+e.cell+' · исходная отметка: '+String(e.rawValue),shiftType:e.shiftType,ratePerShift:6000,sourcePaid:e.paid,importSourceKey:e.sourceKey,importFingerprint:signature});stats.entriesAdded++;
+  next.attendance.push({id:uid(),date:e.date,workerId:worker.id,objectId,status:e.shifts===0.5?'Половина смены':'Смена',hours:'',shifts:e.shifts,fine:e.fine,deduction:0,adjustmentReason:e.fine?'Красная отметка в исходном табеле':'',notes:e.sheet+'!'+e.cell+' · исходная отметка: '+String(e.rawValue),shiftType:e.shiftType,ratePerShift:e.rate,sourcePaid:e.paid,importSourceKey:e.sourceKey,importFingerprint:signature});stats.entriesAdded++;
  }
  for(const pmt of p.payments){
   const worker=workers.get(timesheetNorm(pmt.workerName)),old=payKeys.get(pmt.sourceKey),signature=JSON.stringify([timesheetNorm(pmt.workerName),pmt.date,pmt.amount,[...pmt.sourceKeys].sort()]);
@@ -1364,7 +1364,7 @@ function commitTimesheetImport(payload){
  return plan;
 }
 function timesheetPlanHTML(plan,completed=false){const {stats:s,totals:t}=plan;
- return '<p>'+(completed?'Добавлено':'Добавится')+': сотрудников <b>'+s.workersAdded+'</b>, записей смен <b>'+s.entriesAdded+'</b>, выплат <b>'+s.paymentsAdded+'</b>. Уже перенесено ранее: смен '+s.entriesSkipped+', выплат '+s.paymentsSkipped+'.</p><p>Ставка — 6000 ₽. '+(completed?'Обновлено':'Обновится')+' ставок сотрудников: '+s.ratesUpdated+'. Начисления по прежним записям табеля сохраняются.</p>'+table(['Месяц','Записей','Начислено','Выплачено','Штрафы'],plan.months.map(m=>'<tr><td>'+esc(m.month)+'</td><td>'+m.records+'</td><td>'+money(m.accrued)+'</td><td>'+money(m.paid)+'</td><td>'+money(m.fines)+'</td></tr>'))+'<p>В файле: '+t.entries+' записей, '+t.shifts.toLocaleString('ru-RU',{maximumFractionDigits:3})+' смены. Начислено '+money(t.accrued)+', выплачено '+money(t.paid)+', штрафы '+money(t.fines)+'. Остаток '+money(t.balance)+'.</p><p>Строк для уточнения: '+t.review+'. Они '+(completed?'сохранены':'сохранятся')+' отдельно, без начисления конкретным сотрудникам. Даты выплат в этом переносе — конец месяца. В дальнейшем дату указываете самостоятельно. Часы не указаны в исходнике.</p>';
+ return '<p>'+(completed?'Добавлено':'Добавится')+': сотрудников <b>'+s.workersAdded+'</b>, записей смен <b>'+s.entriesAdded+'</b>, выплат <b>'+s.paymentsAdded+'</b>. Уже перенесено ранее: смен '+s.entriesSkipped+', выплат '+s.paymentsSkipped+'.</p><p>Ставка новых импортируемых смен — 6000 ₽; она сохраняется в каждой новой смене. Ставки существующих сотрудников не меняются. Новые сотрудники получают ставку 6000 ₽. Прежние записи табеля и их начисления сохраняются.</p><p>Итоги исходного файла по месяцам (включая ранее перенесённые записи):</p>'+table(['Месяц','Записей','Начислено','Выплачено','Штрафы'],plan.months.map(m=>'<tr><td>'+esc(m.month)+'</td><td>'+m.records+'</td><td>'+money(m.accrued)+'</td><td>'+money(m.paid)+'</td><td>'+money(m.fines)+'</td></tr>'))+'<p>В файле: '+t.entries+' записей, '+t.shifts.toLocaleString('ru-RU',{maximumFractionDigits:3})+' смены. Начислено '+money(t.accrued)+', выплачено '+money(t.paid)+', штрафы '+money(t.fines)+'. Остаток '+money(t.balance)+'.</p><p>Строк для уточнения: '+t.review+'. Они '+(completed?'сохранены':'сохранятся')+' отдельно, без начисления конкретным сотрудникам. Даты выплат в этом переносе — конец месяца. В дальнейшем дату указываете самостоятельно. Часы не указаны в исходнике.</p>';
 }
 let pendingTimesheet=null;
 const tsInput=document.getElementById('timesheetImportFile'),tsPreview=document.getElementById('timesheetPreview'),tsApply=document.getElementById('timesheetApply'),tsStatus=document.getElementById('timesheetImportStatus'),tsDetails=document.getElementById('timesheetImportPreview');
