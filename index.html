@@ -629,10 +629,10 @@ const KEY='moiShtab_v03';
 const today=()=>new Date().toLocaleDateString('en-CA');
 const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
 const blank=()=>({version:3,objects:[],tasks:[],works:[],goals:[],workers:[],attendance:[],payments:[],expenses:[],schedule:[],income:[],accountable:[],warehouse:[],warehouseMovements:[]});
-const persistence=ProrabkaStorage.create({getItem:k=>localStorage.getItem(k),setItem:(k,v)=>localStorage.setItem(k,v)},KEY,blank);
+const persistence=ProrabkaStorage.createDataStore({getItem:k=>localStorage.getItem(k),setItem:(k,v)=>localStorage.setItem(k,v)},KEY,blank);
 let db=load();
 let activeObjectId="";try{activeObjectId=sessionStorage.getItem("prorabka_object")||""}catch(e){}
-function load(){return persistence.initial()}
+function load(){return persistence.readSnapshot()}
 function storageNotice(message){
  let panel=document.getElementById('storageNotice');
  if(!panel){panel=document.createElement('div');panel.id='storageNotice';panel.setAttribute('role','alert');panel.style.cssText='position:sticky;top:0;z-index:9999;background:#fff0d0;color:#392700;padding:16px;border:2px solid #a65b00';document.body.prepend(panel)}
@@ -1186,7 +1186,7 @@ document.getElementById('printFinance').addEventListener('click',()=>{
 });
 document.getElementById('exportBtn').addEventListener('click',()=>{try{ProrabkaStorage.validate(db)}catch(error){document.getElementById('backupStatus').textContent='Копия требует сверки: '+error.message;storageNotice('Исходная база сохранена без изменений. Скачайте исходные данные для сверки. '+error.message);return}const blob=new Blob([JSON.stringify({...db,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='prorabka-backup-'+today()+'.json';a.click();URL.revokeObjectURL(a.href);document.getElementById('backupStatus').textContent='Резервная копия подготовлена.'});
 const previousBackupButton=document.createElement('button');previousBackupButton.type='button';previousBackupButton.className='btn secondary';previousBackupButton.textContent='Скачать копию до импорта';
-previousBackupButton.onclick=()=>{try{const raw=localStorage.getItem(KEY+'_before_import');if(raw===null){alert('Копии до импорта пока нет.');return}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.download='prorabka-before-import.json';a.click();URL.revokeObjectURL(a.href)}catch(error){alert('Не удалось прочитать предыдущую копию. '+error.message)}};
+previousBackupButton.onclick=()=>{try{const raw=persistence.readPreviousBackup();if(raw===null){alert('Копии до импорта пока нет.');return}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.download='prorabka-before-import.json';a.click();URL.revokeObjectURL(a.href)}catch(error){alert('Не удалось прочитать предыдущую копию. '+error.message)}};
 document.getElementById('exportBtn').after(previousBackupButton);
 document.getElementById('importFile').addEventListener('change',async e=>{
  const file=e.target.files[0];if(!file)return;
