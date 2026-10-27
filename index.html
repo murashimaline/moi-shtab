@@ -1185,6 +1185,46 @@ document.getElementById('printFinance').addEventListener('click',()=>{
  w.document.open();w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Финансовый отчёт ${esc(from)} — ${esc(to)}</title><style>@page{size:A4;margin:15mm}body{font:12px/1.6 Arial,sans-serif;color:#152238}h1{color:#075ba1}h2{margin-top:30px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border:1px solid #bbc9d9;text-align:left}th{background:#edf4fa}.table-wrap{width:100%}.muted-small{font-size:10px;color:#4c617c}</style></head><body><h1>Прорабка — финансовый отчёт</h1><p>Период: ${esc(from||'все даты')} — ${esc(to||'все даты')} · Объект: ${esc(oid?objName(oid):'Все объекты')}</p><h2>Итоги</h2>${report}<h2>Данные по объектам</h2>${objects}<script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
 });
 document.getElementById('exportBtn').addEventListener('click',()=>{try{ProrabkaStorage.validate(db)}catch(error){document.getElementById('backupStatus').textContent='Копия требует сверки: '+error.message;storageNotice('Исходная база сохранена без изменений. Скачайте исходные данные для сверки. '+error.message);return}const blob=new Blob([JSON.stringify({...db,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='prorabka-backup-'+today()+'.json';a.click();URL.revokeObjectURL(a.href);document.getElementById('backupStatus').textContent='Резервная копия подготовлена.'});
+function setupDiagnostics(){
+ const panel=document.createElement('section');panel.className='panel';panel.id='diagnosticsPanel';
+ const title=document.createElement('h2');title.textContent='Диагностика данных';
+ const note=document.createElement('p');note.textContent='Проверяется сохранённая база на этом устройстве. Несохранённые правки не входят в отчёт. Диагностика ничего не исправляет; совпадения требуют ручной сверки.';
+ const button=document.createElement('button');button.type='button';button.className='btn secondary';button.id='runDiagnostics';button.textContent='Проверить данные без изменений';
+ const summary=document.createElement('p');summary.id='diagnosticsSummary';summary.setAttribute('role','status');
+ const list=document.createElement('div');list.id='diagnosticsResults';list.style.overflowWrap='anywhere';
+ const prev=document.createElement('button'),next=document.createElement('button');
+ for(const b of [prev,next]){b.type='button';b.className='btn secondary';b.hidden=true}
+ prev.textContent='Назад';next.textContent='Следующие 100';
+ let report=null,page=0;
+ const severity={error:'Ошибка',warning:'Требует проверки',info:'Информация'};
+ const category={structure:'Структура',links:'ID и связи',values:'Значения',attendance:'Смены и ставки',finance:'Финансы'};
+ const address=r=>r.collection+(r.index===null?'':'['+r.index+']')+' · ID: '+(r.id??'не определён');
+ const draw=()=>{
+  list.replaceChildren();
+  summary.textContent=(report.complete?'Проверка завершена. ':'Проверка неполная: часть исходника не читается. ')+
+   'Ошибок: '+report.counts.error+'; для сверки: '+report.counts.warning+'; информационных: '+report.counts.info+
+   '. Данные не изменены. Находки '+(report.issues.length?page*100+1:0)+'–'+Math.min((page+1)*100,report.issues.length)+' из '+report.issues.length+'.';
+  if(!report.issues.length){const p=document.createElement('p');p.textContent='Проблем по реализованным правилам не найдено. Это не подтверждение достоверности всех данных.';list.append(p)}
+  for(const issue of report.issues.slice(page*100,(page+1)*100)){
+   const item=document.createElement('article');item.style.cssText='border-top:1px solid #ccc;padding:12px 0';
+   const h=document.createElement('h3');h.textContent=severity[issue.severity]+' · '+category[issue.category]+': '+issue.message;
+   const ref=document.createElement('p');ref.textContent=address(issue.record)+(issue.field?' · '+issue.field:'');
+   const why=document.createElement('p');why.textContent=issue.reason;
+   item.append(h,ref,why);
+   if(issue.related.length){const related=document.createElement('p');related.textContent='Связанные записи (до 10): '+issue.related.map(address).join('; ');item.append(related)}
+   list.append(item);
+  }
+  prev.hidden=page===0;next.hidden=(page+1)*100>=report.issues.length;
+ };
+ button.onclick=()=>{
+  try{report=ProrabkaStorage.diagnoseRaw(persistence.readRaw());page=0;draw()}
+  catch{report=null;list.replaceChildren();prev.hidden=next.hidden=true;summary.textContent='Диагностика не выполнена: не удалось прочитать или проверить сохранённую базу. Данные не изменены.'}
+ };
+ prev.onclick=()=>{page--;draw()};next.onclick=()=>{page++;draw()};
+ panel.append(title,note,button,summary,list,prev,next);
+ document.getElementById('footerBackup').after(panel);
+}
+setupDiagnostics();
 const previousBackupButton=document.createElement('button');previousBackupButton.type='button';previousBackupButton.className='btn secondary';previousBackupButton.textContent='Скачать копию до импорта';
 previousBackupButton.onclick=()=>{try{const raw=persistence.readPreviousBackup();if(raw===null){alert('Копии до импорта пока нет.');return}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([raw],{type:'application/json'}));a.download='prorabka-before-import.json';a.click();URL.revokeObjectURL(a.href)}catch(error){alert('Не удалось прочитать предыдущую копию. '+error.message)}};
 document.getElementById('exportBtn').after(previousBackupButton);

@@ -24,6 +24,9 @@ jobs:
       - run: node tests/browser-stage3a.cjs
         env:
           BROWSER_CHANNEL: chromium
+      - run: node tests/browser-diagnostics.cjs
+        env:
+          BROWSER_CHANNEL: chromium
       - run: python tests/check-finance-exports.py
       - uses: actions/upload-artifact@v4
         if: always()
