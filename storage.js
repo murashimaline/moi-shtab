@@ -3,6 +3,18 @@
 'use strict';
 const collections=['objects','tasks','works','goals','workers','attendance','payments','expenses','schedule','income','accountable','warehouse','warehouseMovements','timesheetImports'];
 const required=collections.slice(0,8);
+const referenceTargets=Object.freeze({objectId:'objects',workerId:'workers',itemId:'warehouse',paymentId:'payments'});
+// Typed references are an in-memory API only; version 3 keeps its existing fields.
+function reference(collection,id){
+ if(!collections.includes(collection)||typeof id!=='string'||!id||! /^[a-zA-Z0-9_-]+$/.test(id))throw Error('Некорректная ссылка');
+ return Object.freeze({collection,id});
+}
+function resolveReference(data,ref){
+ if(!ref||!collections.includes(ref.collection))return undefined;
+ return (data[ref.collection]||[]).find(row=>row.id===ref.id);
+}
+const capabilities=Object.freeze({backend:'localStorage',schemaVersion:3,synchronous:true,atomicPrimaryWrite:true,crossTabCompareAndSwap:false,fileTransactions:false});
+
 const clone=x=>JSON.parse(JSON.stringify(x));
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const validDate=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
@@ -50,10 +62,10 @@ function validate(data,{links=true}={}){
  }
  for(const [month,r] of Object.entries(next.advanceReports))if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!object(r)||typeof r.status!=='string')fail('advanceReports.'+month);
  if(links)for(const k of collections)for(const r of next[k]){
-  for(const [field,target] of [['objectId','objects'],['workerId','workers'],['itemId','warehouse'],['paymentId','payments']])if(r[field]&&!next[target].some(x=>x.id===r[field]))fail(k+'.'+field+' — ссылка должна вести на существующую запись; удаление связанных записей запрещено');
+  for(const [field,target] of Object.entries(referenceTargets))if(r[field]&&!resolveReference(next,{collection:target,id:r[field]}))fail(k+'.'+field+' — ссылка должна вести на существующую запись; удаление связанных записей запрещено');
   if(['attendance','payments'].includes(k)&&!r.workerId)fail(k+'.workerId');
   if(k==='warehouseMovements'&&!r.itemId)fail(k+'.itemId');
-  for(const id of r.workerIds||[])if(!next.workers.some(x=>x.id===id))fail(k+'.workerIds — ссылка должна вести на существующего сотрудника; удаление связанных записей запрещено');
+  for(const id of r.workerIds||[])if(!resolveReference(next,{collection:'workers',id}))fail(k+'.workerIds — ссылка должна вести на существующего сотрудника; удаление связанных записей запрещено');
  }
  return next;
 }
@@ -61,7 +73,10 @@ function create(storage,key,empty){
  let raw=null,confirmed=empty(),blocked=false,conflict=false,error='';
  try{raw=storage.getItem(key);if(raw!==null)confirmed=validate(JSON.parse(raw),{links:false})}catch(e){blocked=true;error=e.message}
  return {
-  initial:()=>clone(confirmed), status:()=>({blocked,conflict,error,raw}),
+  initial:()=>clone(confirmed), readSnapshot:()=>clone(confirmed),
+  capabilities:()=>capabilities,
+  readPreviousBackup:()=>storage.getItem(key+'_before_import'),
+  status:()=>({blocked,conflict,error,raw}),
   observe(event){if(event.key===key||event.key===null){if(event.newValue!==raw){conflict=true;return true}}return false},
   commit(candidate,{importing=false}={}){
    try{
@@ -137,5 +152,5 @@ function protectClosedReports(before,after){
   }
  }
 }
-const api={validate,create,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
+const api={validate,create,createDataStore:create,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
 })(globalThis);
