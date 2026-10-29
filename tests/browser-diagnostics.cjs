@@ -57,5 +57,22 @@ const fixture=()=>({version:3,_revision:{number:12,token:'unchanged'},objects:[{
  await scenario('financial candidates and missing sources have readable reasons',JSON.stringify(finance),async p=>{
   const text=await p.locator('#diagnosticsResults').innerText();assert.match(text,/Источник оплаты/);assert.match(text,/повторная финансовая/);assert.match(text,/payments\[0\]/);
  });
+ const warehouse=fixture();warehouse.warehouse=[
+  {id:'tool',name:'Tool',objectId:'o',baseQty:2,unit:'шт.',serial:'  XSS-42  '},
+  {id:'second-tool',name:'Second tool',objectId:'o',baseQty:1,unit:'условная ед.',serial:'xss-42'}
+ ];
+ warehouse.warehouseMovements=[
+  {id:'move-a',itemId:'tool',date:'2026-01-10',kind:'issue',qty:1,assignee:'Test',notes:'Act'},
+  {id:'move-b',itemId:'tool',date:'2026-01-10',kind:'issue',qty:1,assignee:'Test',notes:'Act'}
+ ];
+ warehouse.works=[{id:'bad-photo',date:'2026-01-10',objectId:'o',photos:['data:image/png;base64,%%%']}];
+ warehouse.expenses=[{id:'bad-receipt',date:'2026-01-10',objectId:'o',category:'Материалы',amount:1,paymentSource:'other',receipts:[{id:'receipt',name:'<img src=x onerror="window.injected=1">',data:'data:text/plain;base64,%%%'}]}];
+ await scenario('warehouse and attachment directions are visible, safe, and separate from findings',JSON.stringify(warehouse),async p=>{
+  const coverage=await p.locator('#diagnosticsDirections').innerText();
+  for(const label of ['Проверено','Частично','Невозможно'])assert.match(coverage,new RegExp(label));
+  assert.match(coverage,/Остатки/);assert.match(coverage,/Вложения/);
+  const text=await p.locator('#diagnosticsResults').innerText();assert.match(text,/Склад/);assert.match(text,/Вложения/);assert.match(text,/Возможный дубль/);
+  assert.equal(await p.locator('#diagnosticsResults img').count(),0);assert.equal(await p.evaluate(()=>window.injected),undefined);
+ });
  await browser.close();server.close();
 })().catch(async e=>{console.error(e);if(browser)await browser.close();if(server)server.close();process.exitCode=1});

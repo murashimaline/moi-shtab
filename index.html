@@ -1191,37 +1191,60 @@ function setupDiagnostics(){
  const note=document.createElement('p');note.textContent='Проверяется сохранённая база на этом устройстве. Несохранённые правки не входят в отчёт. Диагностика ничего не исправляет; совпадения требуют ручной сверки.';
  const button=document.createElement('button');button.type='button';button.className='btn secondary';button.id='runDiagnostics';button.textContent='Проверить данные без изменений';
  const summary=document.createElement('p');summary.id='diagnosticsSummary';summary.setAttribute('role','status');
+ const directions=document.createElement('div');directions.id='diagnosticsDirections';directions.style.overflowWrap='anywhere';directions.hidden=true;
  const list=document.createElement('div');list.id='diagnosticsResults';list.style.overflowWrap='anywhere';
  const prev=document.createElement('button'),next=document.createElement('button');
  for(const b of [prev,next]){b.type='button';b.className='btn secondary';b.hidden=true}
  prev.textContent='Назад';next.textContent='Следующие 100';
  let report=null,page=0;
  const severity={error:'Ошибка',warning:'Требует проверки',info:'Информация'};
- const category={structure:'Структура',links:'ID и связи',values:'Значения',attendance:'Смены и ставки',finance:'Финансы'};
+ const category={structure:'Структура',links:'ID и связи',values:'Значения',attendance:'Смены и ставки',finance:'Финансы',warehouse:'Склад',attachment:'Вложения',attachments:'Вложения',files:'Вложения',limitations:'Ограничения'};
+ const directionStatus={checked:'Проверено',partial:'Частично',impossible:'Невозможно'};
  const address=r=>r.collection+(r.index===null?'':'['+r.index+']')+' · ID: '+(r.id??'не определён');
+ const problemSummary=n=>{
+  if(n===0)return 'проблем не обнаружено';
+  if(n===1)return 'обнаружена 1 проблема';
+  const last=n%10,lastTwo=n%100,word=last>=2&&last<=4&&!(lastTwo>=12&&lastTwo<=14)?'проблемы':'проблем';
+  return 'обнаружено '+n+' '+word;
+ };
+ const drawDirections=()=>{
+  directions.replaceChildren();
+  const entries=Array.isArray(report.directions)?report.directions:[];
+  directions.hidden=!entries.length;
+  for(const direction of entries){
+   const item=document.createElement('article');item.style.cssText='border-top:1px solid #ccc;padding:12px 0';
+   const heading=document.createElement('h3');const status=directionStatus[direction?.status]||'Невозможно';
+   const problems=Number.isSafeInteger(direction?.problems)&&direction.problems>=0?direction.problems:0;
+   heading.textContent=status+' — '+problemSummary(problems)+(direction?.title?' · '+direction.title:'');
+   item.append(heading);
+   if(direction?.reason){const reason=document.createElement('p');reason.textContent=String(direction.reason);item.append(reason)}
+   directions.append(item);
+  }
+ };
  const draw=()=>{
   list.replaceChildren();
+   drawDirections();
   summary.textContent=(report.complete?'Проверка завершена. ':'Проверка неполная: часть исходника не читается. ')+
    'Ошибок: '+report.counts.error+'; для сверки: '+report.counts.warning+'; информационных: '+report.counts.info+
    '. Данные не изменены. Находки '+(report.issues.length?page*100+1:0)+'–'+Math.min((page+1)*100,report.issues.length)+' из '+report.issues.length+'.';
   if(!report.issues.length){const p=document.createElement('p');p.textContent='Проблем по реализованным правилам не найдено. Это не подтверждение достоверности всех данных.';list.append(p)}
-  for(const issue of report.issues.slice(page*100,(page+1)*100)){
+   for(const issue of report.issues.slice(page*100,(page+1)*100)){
    const item=document.createElement('article');item.style.cssText='border-top:1px solid #ccc;padding:12px 0';
-   const h=document.createElement('h3');h.textContent=severity[issue.severity]+' · '+category[issue.category]+': '+issue.message;
+    const h=document.createElement('h3');h.textContent=(severity[issue.severity]||'Информация')+' · '+(category[issue.category]||'Другое')+': '+issue.message;
    const ref=document.createElement('p');ref.textContent=address(issue.record)+(issue.field?' · '+issue.field:'');
    const why=document.createElement('p');why.textContent=issue.reason;
    item.append(h,ref,why);
-   if(issue.related.length){const related=document.createElement('p');related.textContent='Связанные записи (до 10): '+issue.related.map(address).join('; ');item.append(related)}
+    if(Array.isArray(issue.related)&&issue.related.length){const related=document.createElement('p');related.textContent='Связанные записи (до 10): '+issue.related.map(address).join('; ');item.append(related)}
    list.append(item);
   }
   prev.hidden=page===0;next.hidden=(page+1)*100>=report.issues.length;
  };
  button.onclick=()=>{
   try{report=ProrabkaStorage.diagnoseRaw(persistence.readRaw());page=0;draw()}
-  catch{report=null;list.replaceChildren();prev.hidden=next.hidden=true;summary.textContent='Диагностика не выполнена: не удалось прочитать или проверить сохранённую базу. Данные не изменены.'}
+  catch{report=null;directions.replaceChildren();directions.hidden=true;list.replaceChildren();prev.hidden=next.hidden=true;summary.textContent='Диагностика не выполнена: не удалось прочитать или проверить сохранённую базу. Данные не изменены.'}
  };
  prev.onclick=()=>{page--;draw()};next.onclick=()=>{page++;draw()};
- panel.append(title,note,button,summary,list,prev,next);
+ panel.append(title,note,button,summary,directions,list,prev,next);
  document.getElementById('footerBackup').after(panel);
 }
 setupDiagnostics();

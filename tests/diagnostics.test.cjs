@@ -6,6 +6,9 @@ const fixture=()=>({version:3,_revision:{number:7,token:'original'},objects:[{id
 const check=data=>diagnoseRaw(JSON.stringify(data));
 const has=(r,c)=>r.issues.some(i=>i.code===c);
 const count=(r,c)=>r.issues.filter(i=>i.code===c).length;
+const direction=(r,id)=>{assert.ok(Array.isArray(r.directions),'diagnostics exposes additive directions');const value=r.directions.find(x=>x.id===id);assert.ok(value,'missing direction '+id);return value};
+const issueFor=(r,id,field)=>r.issues.filter(i=>i.record.id===id&&(field===undefined||i.field===field));
+const onePixelPng='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIW2Nk+M/wHwAF/gL+5ewzAAAAAElFTkSuQmCC';
 function disk(raw){const values=new Map([[KEY,raw],[KEY+'_before_import','exact backup\r\n']]);return {values,writes:[],fail:false,getItem(k){if(this.fail)throw Error('denied');return values.get(k)??null},setItem(k,v){this.writes.push([k,v]);values.set(k,v)}}}
 test('clean snapshot and absent primary have no findings; numeric strings and zero historical rate are valid',()=>{
  const d=fixture();assert.equal(check(d).issues.length,0);assert.equal(diagnoseRaw(null).issues.length,0);
@@ -116,4 +119,110 @@ test('all findings carry category, severity, location and reason without copying
 test('large duplicate group yields linear number of findings, not pairwise explosion',()=>{
  const d=fixture();d.attendance=Array.from({length:5000},(_,i)=>({...d.attendance[0],id:'a'+i}));
  const r=check(d);assert.equal(count(r,'shift_conflict'),5000);assert.equal(r.issues.length,5000);
+});
+test('B0-05 completes supported stock and embedded-file checks without changing a valid raw snapshot',()=>{
+ const d=fixture();d.warehouse=[
+  {id:'tool',name:'Hammer',objectId:'o',baseQty:2,unit:'шт.',serial:'T-1'},
+  {id:'cement',name:'Cement',objectId:'o',baseQty:1.5,unit:'кг',serial:'C-1'}
+ ];
+ d.warehouseMovements=[
+  {id:'issue',itemId:'tool',date:'2026-01-10',kind:'issue',qty:1,assignee:'Worker',notes:'work'},
+  {id:'restock',itemId:'cement',date:'2026-01-10',kind:'restock',qty:.25,assignee:'Store',notes:'delivery'}
+ ];
+ d.works=[{id:'work',date:'2026-01-10',objectId:'o',photos:[onePixelPng]}];
+ d.expenses=[{id:'expense',date:'2026-01-10',objectId:'o',category:'Материалы',amount:1,paymentSource:'other',receipts:[{id:'receipt',name:'note.txt',data:'data:text/plain;base64,SGVsbG8=',verified:false}]}];
+ const before=JSON.stringify(d),r=check(d);
+ for(const id of ['warehouse_balances','warehouse_movements','warehouse_links','warehouse_duplicates','warehouse_serials','attachments']){
+  const item=direction(r,id);assert.equal(item.status,'checked',id);assert.equal(item.problems,0,id);
+ }
+ assert.equal(r.issues.filter(i=>['warehouse','attachments'].includes(i.category)).length,0);
+ assert.equal(JSON.stringify(d),before);
+});
+test('B0-05 identifies invalid warehouse inputs, does not infer a worker from assignee, and keeps execution status separate from findings',()=>{
+ const d=fixture();d.warehouse=[
+  {id:'tool',name:'Piece tool',objectId:'o',baseQty:1.5,unit:'шт.',serial:'T-1'},
+  {id:'unknown',name:'Unknown unit',objectId:'o',baseQty:1.5,unit:'условная ед.',serial:'U-1'}
+ ];
+ d.warehouseMovements=[{id:'bad',itemId:'',date:'2026-02-30',kind:'transfer',qty:0,assignee:'not-a-worker-id',notes:''}];
+ const r=check(d);
+ for(const code of ['fractional_stock_quantity','unknown_warehouse_unit','invalid_warehouse_movement_quantity','invalid_warehouse_movement_kind'])assert.ok(has(r,code),code);
+ assert.ok(has(r,'missing_link'),'missing itemId remains an explicit typed-link finding');
+ assert.equal(issueFor(r,'bad','workerId').length,0,'assignee must remain a text field, not a workerId');
+ assert.equal(direction(r,'warehouse_balances').status,'partial');
+ assert.equal(direction(r,'warehouse_movements').status,'checked');
+ assert.equal(direction(r,'warehouse_links').status,'checked');
+ assert.ok(direction(r,'warehouse_movements').problems>=2);
+ assert.ok(direction(r,'warehouse_links').problems>=1);
+});
+test('B0-05 applies fractional quantity rules to movements without guessing an unknown unit',()=>{
+ const d=fixture();d.warehouse=[
+  {id:'piece',name:'Piece',objectId:'o',baseQty:2,unit:'шт.'},
+  {id:'material',name:'Material',objectId:'o',baseQty:2,unit:'кг'},
+  {id:'unknown',name:'Unknown',objectId:'o',baseQty:2,unit:'условная ед.'}
+ ];
+ d.warehouseMovements=[
+  {id:'piece-move',itemId:'piece',date:'2026-01-10',kind:'issue',qty:0.5,assignee:'',notes:''},
+  {id:'material-move',itemId:'material',date:'2026-01-10',kind:'restock',qty:0.5,assignee:'',notes:''},
+  {id:'unknown-move',itemId:'unknown',date:'2026-01-10',kind:'restock',qty:0.5,assignee:'',notes:''}
+ ];
+ const r=check(d);
+ assert.equal(issueFor(r,'piece-move','qty').filter(i=>i.code==='fractional_stock_quantity').length,1);
+ assert.equal(issueFor(r,'material-move','qty').filter(i=>i.code==='fractional_stock_quantity').length,0);
+ assert.equal(direction(r,'warehouse_movements').status,'partial');
+});
+test('B0-05 calculates only final warehouse balance and never invents an order for same-date movements',()=>{
+ const negative=fixture();negative.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
+ negative.warehouseMovements=[{id:'issue',itemId:'tool',date:'2026-01-10',kind:'issue',qty:2,assignee:'',notes:''}];
+ const negativeReport=check(negative);assert.ok(has(negativeReport,'negative_warehouse_balance'));
+ const unordered=fixture();unordered.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:0,unit:'шт.'}];
+ unordered.warehouseMovements=[
+  {id:'issue',itemId:'tool',date:'2026-01-10',kind:'issue',qty:1,assignee:'',notes:''},
+  {id:'restock',itemId:'tool',date:'2026-01-10',kind:'restock',qty:1,assignee:'',notes:''}
+ ];
+ const r=check(unordered);assert.equal(has(r,'negative_warehouse_balance'),false);
+ const order=direction(r,'warehouse_movement_order');assert.equal(order.status,'impossible');assert.match(order.reason,/врем|поряд/i);
+});
+test('B0-05 flags exact movement candidates and serial matches after trim/case-folding without changing original strings',()=>{
+ const d=fixture();d.warehouse=[
+  {id:'one',name:'One',objectId:'o',baseQty:3,unit:'шт.',serial:'  AbC-42  '},
+  {id:'two',name:'Two',objectId:'o',baseQty:3,unit:'шт.',serial:'abc-42'},
+  {id:'three',name:'Three',objectId:'o',baseQty:3,unit:'шт.',serial:'   '}
+ ];
+ const base={itemId:'one',date:'2026-01-10',kind:'issue',qty:1,assignee:'Worker',notes:'Act'};
+ d.warehouseMovements=[{id:'first',...base},{id:'second',...base},{id:'different-note',...base,notes:'Other'}];
+ const before=JSON.stringify(d),r=check(d);
+ assert.equal(count(r,'possible_duplicate_warehouse_movement'),2);
+ assert.deepEqual(r.issues.filter(i=>i.code==='possible_duplicate_warehouse_movement').map(i=>i.record.id).sort(),['first','second']);
+ assert.equal(count(r,'possible_duplicate_serial'),2);
+ const serialIssues=r.issues.filter(i=>i.code==='possible_duplicate_serial');assert.ok(serialIssues.every(i=>i.related.length===1));
+ assert.equal(JSON.stringify(d),before);
+});
+test('B0-05 bounds related records for large duplicate serial groups',()=>{
+ const d=fixture();d.warehouse=Array.from({length:5000},(_,i)=>({id:'tool'+i,name:'Tool '+i,objectId:'o',baseQty:1,unit:'шт.',serial:'DUPLICATE-SERIAL'}));
+ const r=check(d),duplicates=r.issues.filter(i=>i.code==='possible_duplicate_serial');
+ assert.equal(duplicates.length,5000);assert.ok(duplicates.every(i=>i.related.length===10));
+});
+test('B0-05 reports only structurally or syntactically recognizable embedded attachment defects and never leaks payloads',()=>{
+ const d=fixture();d.works=[
+  {id:'empty-photo',date:'2026-01-10',objectId:'o',photos:['']},
+  {id:'bad-photo',date:'2026-01-10',objectId:'o',photos:['data:image/png;base64,SGVsbG8=']},
+  {id:'shape-photo',date:'2026-01-10',objectId:'o',photos:'not-an-array'}
+ ];
+ d.expenses=[
+  {id:'empty-receipt',date:'2026-01-10',amount:1,category:'Материалы',paymentSource:'other',receipts:[{id:'r1',name:'',data:''}]},
+  {id:'bad-receipt',date:'2026-01-10',amount:1,category:'Материалы',paymentSource:'other',receipts:[{id:'r2',name:'secret.pdf',data:'data:application/pdf;base64,SGVsbG8='}]},
+  {id:'shape-receipt',date:'2026-01-10',amount:1,category:'Материалы',paymentSource:'other',receipts:'not-an-array'}
+ ];
+ const r=check(d);
+ for(const code of ['empty_photo_attachment','corrupt_photo_attachment','invalid_photos_structure','empty_receipt_attachment','corrupt_receipt_attachment','invalid_receipts_structure'])assert.ok(has(r,code),code);
+ assert.equal(direction(r,'attachments').status,'partial');
+ assert.ok(!JSON.stringify(r).includes('SGVsbG8='));
+ assert.equal(direction(r,'attachment_full_integrity').status,'impossible');
+});
+test('B0-05 exposes required unavailable directions separately from findings and complete',()=>{
+ const r=check(fixture());
+ for(const id of ['delivery_receiving','tolling_materials','inventory','kits','historical_responsible']){
+  const item=direction(r,id);assert.equal(item.status,'impossible',id);assert.ok(item.reason);
+ }
+ assert.equal(r.complete,true,'unsupported B0-05 model areas must not redefine the B0-04 complete contract');
 });
