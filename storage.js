@@ -156,9 +156,10 @@ function protectClosedReports(before,after){
 // B0-04: isolated parsing only; no normalization, writes or mutation.
 function diagnoseRaw(raw){
  const issues=[];
- const directionOrder=['warehouse_balances','warehouse_movements','warehouse_links','warehouse_duplicates','warehouse_serials','attachments','warehouse_movement_order','attachment_full_integrity','delivery_receiving','tolling_materials','inventory','kits','historical_responsible'];
+ const directionOrder=['warehouse_balances','warehouse_chronology','warehouse_movements','warehouse_links','warehouse_duplicates','warehouse_serials','attachments','warehouse_movement_order','attachment_full_integrity','delivery_receiving','tolling_materials','inventory','kits','historical_responsible'];
  const directions=new Map([
   ['warehouse_balances',{title:'Остатки',status:'checked',reason:'Проверяются доступные исходные количества и итоговый расчётный остаток.'}],
+  ['warehouse_chronology',{title:'Хронология движений',status:'partial',reason:'Движения разных дат сверяются по дневному итогу. warehouse.baseQty не имеет даты, поэтому исторический остаток является кандидатом для ручной сверки.'}],
   ['warehouse_movements',{title:'Движения',status:'checked',reason:'Проверяются доступные даты, виды операций и количества.'}],
   ['warehouse_links',{title:'Связи склада',status:'checked',reason:'Проверяются только явные постоянные ID-ссылки из исходного JSON.'}],
   ['warehouse_duplicates',{title:'Повторные операции',status:'checked',reason:'Проверяются совпадения доступных реквизитов движения.'}],
@@ -181,7 +182,7 @@ function diagnoseRaw(raw){
  const impossible=(id,reason)=>setDirection(id,'impossible',reason);
  const countProblem=id=>{const direction=directions.get(id);if(direction)direction.problems++;};
  const unavailable=reason=>{
-  for(const id of ['warehouse_balances','warehouse_movements','warehouse_links','warehouse_duplicates','warehouse_serials','attachments'])impossible(id,reason);
+  for(const id of ['warehouse_balances','warehouse_chronology','warehouse_movements','warehouse_links','warehouse_duplicates','warehouse_serials','attachments'])impossible(id,reason);
  };
  const add=(code,category,severity,collection,index,row,field,message,reason,related=[])=>{
   issues.push({code,category,severity,record:{collection,index,id:typeof row?.id==='string'?row.id:null},
@@ -339,7 +340,7 @@ function diagnoseRaw(raw){
 
   if(warehouseState!=='available'){
    const reason=collectionReason('warehouse',warehouseState);
-   impossible('warehouse_balances',reason);impossible('warehouse_links',reason);impossible('warehouse_serials',reason);
+   impossible('warehouse_balances',reason);impossible('warehouse_chronology',reason);impossible('warehouse_links',reason);impossible('warehouse_serials',reason);
    if(movementState==='available'){
     partial('warehouse_movements',reason+' Поля движения доступны, но ссылки на инструмент проверить полностью нельзя.');
     partial('warehouse_duplicates',reason+' Полные совпадения не подтверждаются без доступного инструмента.');
@@ -347,16 +348,22 @@ function diagnoseRaw(raw){
   }
   if(movementState!=='available'){
    const reason=collectionReason('warehouseMovements',movementState);
-   if(warehouseState==='available')partial('warehouse_balances',reason+' Итоговый остаток нельзя определить без полного журнала движений.');
+   if(warehouseState==='available'){
+    partial('warehouse_balances',reason+' Итоговый остаток нельзя определить без полного журнала движений.');
+    partial('warehouse_links',reason+' Ссылки карточек инструмента проверены, но связи движений недоступны.');
+   }
+   impossible('warehouse_chronology',reason+' Последовательность между датами недоступна без журнала движений.');
    impossible('warehouse_movements',reason);impossible('warehouse_duplicates',reason);
   }
   if(warehouseState==='available'&&!warehouseRowsComplete){
    partial('warehouse_balances','Часть записей warehouse не является объектом, поэтому остатки проверены не полностью.');
+   partial('warehouse_chronology','Часть карточек warehouse не является объектом, поэтому начальные остатки для хронологии определены не полностью.');
    partial('warehouse_links','Часть записей warehouse не является объектом, поэтому ссылки проверены не полностью.');
    partial('warehouse_serials','Часть записей warehouse не является объектом, поэтому номера проверены не полностью.');
   }
   if(movementState==='available'&&!movementRowsComplete){
    partial('warehouse_balances','Часть записей warehouseMovements не является объектом, поэтому остатки проверены не полностью.');
+   partial('warehouse_chronology','Часть записей warehouseMovements не является объектом, поэтому последовательность между датами проверена не полностью.');
    partial('warehouse_movements','Часть записей warehouseMovements не является объектом, поэтому журнал проверен не полностью.');
    partial('warehouse_duplicates','Часть записей warehouseMovements не является объектом, поэтому дубли проверены не полностью.');
   }
@@ -399,7 +406,7 @@ function diagnoseRaw(raw){
     b05Report('warehouse_movements',e,'fractional_stock_quantity','warehouse','error','qty','Дробное количество штучного инструмента','Для распознанной штучной единицы измерения количество движения должно быть целым.');unitOK=false;
    }
    if(item&&item.unit==='unknown'&&qtyOK&&!Number.isInteger(Number(r.qty)))partial('warehouse_movements','Для части движений единица измерения не распознана, поэтому правило дробных количеств применено не полностью.');
-   if(itemOK){const list=movementByItem.get(r.itemId)||[];list.push({entry:e,kindOK,qtyOK,unitOK});movementByItem.set(r.itemId,list)}
+   if(itemOK){const list=movementByItem.get(r.itemId)||[];list.push({entry:e,dateOK,kindOK,qtyOK,unitOK});movementByItem.set(r.itemId,list)}
    const assignee=textPart(r.assignee),notes=textPart(r.notes);
    if(itemOK&&dateOK&&kindOK&&qtyOK&&assignee!==null&&notes!==null){
     const key=JSON.stringify([r.itemId,r.date,r.kind,Number(r.qty),assignee,notes]),group=movementGroups.get(key)||[];group.push(e);movementGroups.set(key,group);
@@ -417,15 +424,51 @@ function diagnoseRaw(raw){
   for(const group of movementGroups.values())if(group.length>1)for(const e of group)
    b05Report('warehouse_duplicates',e,'possible_duplicate_warehouse_movement','warehouse','warning','','Возможный дубль движения','Совпадают инструмент, дата, вид, количество, получатель и примечание. Это кандидат для ручной сверки; записи не объединены.',relatedEntries(group,e));
 
+  const reportQuantityOverflow=(item,related=[])=>{
+   b05Report('warehouse_balances',item.entry,'warehouse_quantity_overflow','warehouse','error','baseQty','Расчёт количества выходит за пределы конечного числа','Промежуточный или итоговый остаток невозможно определить достоверно; ошибочное значение не заменяется нулём.',related);
+   countProblem('warehouse_chronology');
+   partial('warehouse_balances','Для части карточек расчёт количества выходит за пределы конечного числа.');
+   partial('warehouse_chronology','Для части карточек междневный расчёт выходит за пределы конечного числа.');
+  };
   if(warehouseState==='available'&&movementState==='available')for(const [id,item] of itemFacts){
    const movements=movementByItem.get(id)||[];
    if(!item.baseOK||!item.unitOK||movements.some(m=>!m.kindOK||!m.qtyOK||!m.unitOK)){
-    partial('warehouse_balances','Для части карточек остаток нельзя определить из-за некорректных исходных количеств или движений.');continue;
+    partial('warehouse_balances','Для части карточек остаток нельзя определить из-за некорректных исходных количеств или движений.');
+    partial('warehouse_chronology','Для части карточек последовательность между датами нельзя определить из-за некорректных исходных количеств или движений.');
+    continue;
    }
-   let balance=item.base;
-   for(const movement of movements){const r=movement.entry.row,q=Number(r.qty);balance+=['return','restock'].includes(r.kind)?q:-q;}
+   let balance=item.base,calculationOK=Number.isFinite(balance);
+   for(const movement of movements){
+    const r=movement.entry.row,q=Number(r.qty),delta=['return','restock'].includes(r.kind)?q:-q,next=balance+delta;
+    if(!Number.isFinite(next)){reportQuantityOverflow(item,movements.map(m=>m.entry).slice(0,10));calculationOK=false;break;}
+    balance=next;
+   }
+   if(!calculationOK)continue;
    if(balance<0)b05Report('warehouse_balances',item.entry,'negative_warehouse_balance','warehouse','error','baseQty','Отрицательный расчётный остаток','Формула использует начальное количество и доступные движения. Порядок операций внутри одной даты не устанавливался.',movements.map(m=>m.entry).slice(0,10));
    if(item.entry.row.condition==='Списан'&&balance>0)b05Report('warehouse_balances',item.entry,'warehouse_condition_balance_mismatch','warehouse','warning','condition','Статус «Списан» не совпадает с расчётным остатком','Статус карточки сам по себе не уменьшает количество. Проверьте, не отсутствует ли операция списания.',movements.map(m=>m.entry).slice(0,10));
+
+   if(movements.some(m=>!m.dateOK)){
+    partial('warehouse_chronology','Часть движений имеет некорректную дату, поэтому последовательность между датами проверена не полностью.');
+    continue;
+   }
+   const days=new Map();let chronologyOK=true;
+   for(const movement of movements){
+    const r=movement.entry.row,q=Number(r.qty),delta=['return','restock'].includes(r.kind)?q:-q;
+    const day=days.get(r.date)||{delta:0,entries:[]},nextDelta=day.delta+delta;
+    if(!Number.isFinite(nextDelta)){reportQuantityOverflow(item,[movement.entry]);chronologyOK=false;break;}
+    day.delta=nextDelta;day.entries.push(movement.entry);days.set(r.date,day);
+   }
+   if(!chronologyOK||days.size<2)continue;
+   let historicalBalance=item.base;
+   for(const [date,day] of [...days.entries()].sort(([a],[b])=>a.localeCompare(b))){
+    const next=historicalBalance+day.delta;
+    if(!Number.isFinite(next)){reportQuantityOverflow(item,[item.entry,...day.entries.filter(entry=>entry!==item.entry).slice(0,9)]);break;}
+    historicalBalance=next;
+    if(historicalBalance<0){
+     const record=day.entries[0],related=[item.entry,...relatedEntries(day.entries,record)].slice(0,10);
+     b05Report('warehouse_chronology',record,'possible_warehouse_intermediate_negative_balance','warehouse','warning','date','Возможен отрицательный промежуточный остаток','После дневного итога за '+date+' расчётный остаток отрицателен. warehouse.baseQty не имеет даты, поэтому достоверность начального исторического остатка ограничена; операции одной даты не упорядочиваются. Это кандидат для ручной сверки, не доказанная ошибка.',related);
+    }
+   }
   }
 
   const base64Info=value=>{

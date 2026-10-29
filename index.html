@@ -1213,9 +1213,10 @@ function setupDiagnostics(){
   directions.hidden=!entries.length;
   for(const direction of entries){
    const item=document.createElement('article');item.style.cssText='border-top:1px solid #ccc;padding:12px 0';
-   const heading=document.createElement('h3');const status=directionStatus[direction?.status]||'Невозможно';
+   const heading=document.createElement('h3');const state=direction?.status,status=directionStatus[state]||'Невозможно';
    const problems=Number.isSafeInteger(direction?.problems)&&direction.problems>=0?direction.problems:0;
-   heading.textContent=status+' — '+problemSummary(problems)+(direction?.title?' · '+direction.title:'');
+   const outcome=state==='impossible'||!directionStatus[state]?'Проверка невозможна — недостаточно данных':problemSummary(problems);
+   heading.textContent=status+' — '+outcome+(direction?.title?' · '+direction.title:'');
    item.append(heading);
    if(direction?.reason){const reason=document.createElement('p');reason.textContent=String(direction.reason);item.append(reason)}
    directions.append(item);

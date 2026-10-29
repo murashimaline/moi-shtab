@@ -182,6 +182,39 @@ test('B0-05 calculates only final warehouse balance and never invents an order f
  const r=check(unordered);assert.equal(has(r,'negative_warehouse_balance'),false);
  const order=direction(r,'warehouse_movement_order');assert.equal(order.status,'impossible');assert.match(order.reason,/врем|поряд/i);
 });
+test('B0-05 treats a distinct-date intermediate deficit as a candidate and never orders same-date movements',()=>{
+ const chronological=fixture();chronological.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
+ chronological.warehouseMovements=[
+  {id:'issue',itemId:'tool',date:'2026-01-10',kind:'issue',qty:3,assignee:'',notes:''},
+  {id:'restock',itemId:'tool',date:'2026-01-11',kind:'restock',qty:5,assignee:'',notes:''}
+ ];
+ const before=JSON.stringify(chronological),r=check(chronological);
+ const candidates=r.issues.filter(i=>i.code==='possible_warehouse_intermediate_negative_balance');
+ assert.equal(candidates.length,1);assert.equal(candidates[0].severity,'warning');assert.match(candidates[0].reason,/неопредел|достовер|началь/i);
+ assert.equal(has(r,'negative_warehouse_balance'),false,'final balance is positive');
+ assert.equal(direction(r,'warehouse_chronology').status,'partial');assert.equal(JSON.stringify(chronological),before);
+
+ const sameDate=fixture();sameDate.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
+ sameDate.warehouseMovements=[
+  {id:'issue',itemId:'tool',date:'2026-01-10',kind:'issue',qty:3,assignee:'',notes:''},
+  {id:'restock',itemId:'tool',date:'2026-01-10',kind:'restock',qty:5,assignee:'',notes:''}
+ ];
+ assert.equal(count(check(sameDate),'possible_warehouse_intermediate_negative_balance'),0,'one date has no provable operation order');
+});
+test('B0-05 marks warehouse links partial when the optional movement collection is absent',()=>{
+ const d=fixture();d.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
+ const r=check(d),links=direction(r,'warehouse_links');
+ assert.equal(links.status,'partial');assert.match(links.reason,/warehouseMovements|движени/i);
+ assert.equal(r.complete,true,'optional collections stay absent in raw JSON without redefining B0-04 completeness');
+});
+test('B0-05 detects non-finite warehouse arithmetic without replacing it with zero',()=>{
+ const d=fixture();d.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:Number.MAX_VALUE,unit:'шт.'}];
+ d.warehouseMovements=[{id:'restock',itemId:'tool',date:'2026-01-10',kind:'restock',qty:Number.MAX_VALUE,assignee:'',notes:''}];
+ const before=JSON.stringify(d),r=check(d);
+ assert.ok(has(r,'warehouse_quantity_overflow'));
+ assert.notEqual(direction(r,'warehouse_balances').status,'checked');assert.notEqual(direction(r,'warehouse_chronology').status,'checked');
+ assert.equal(has(r,'negative_warehouse_balance'),false);assert.equal(JSON.stringify(d),before);
+});
 test('B0-05 flags exact movement candidates and serial matches after trim/case-folding without changing original strings',()=>{
  const d=fixture();d.warehouse=[
   {id:'one',name:'One',objectId:'o',baseQty:3,unit:'шт.',serial:'  AbC-42  '},
