@@ -156,15 +156,44 @@ function protectClosedReports(before,after){
 // B0-04: isolated parsing only; no normalization, writes or mutation.
 function diagnoseRaw(raw){
  const issues=[];
+ const directionOrder=['warehouse_balances','warehouse_chronology','warehouse_movements','warehouse_links','warehouse_duplicates','warehouse_serials','attachments','warehouse_movement_order','attachment_full_integrity','delivery_receiving','tolling_materials','inventory','kits','historical_responsible'];
+ const directions=new Map([
+  ['warehouse_balances',{title:'Остатки',status:'checked',reason:'Проверяются доступные исходные количества и итоговый расчётный остаток.'}],
+  ['warehouse_chronology',{title:'Хронология движений',status:'partial',reason:'Движения разных дат сверяются по дневному итогу. warehouse.baseQty не имеет даты, поэтому исторический остаток является кандидатом для ручной сверки.'}],
+  ['warehouse_movements',{title:'Движения',status:'checked',reason:'Проверяются доступные даты, виды операций и количества.'}],
+  ['warehouse_links',{title:'Связи склада',status:'checked',reason:'Проверяются только явные постоянные ID-ссылки из исходного JSON.'}],
+  ['warehouse_duplicates',{title:'Повторные операции',status:'checked',reason:'Проверяются совпадения доступных реквизитов движения.'}],
+  ['warehouse_serials',{title:'Инвентарные номера',status:'checked',reason:'Проверяются совпадения непустых инвентарных номеров.'}],
+  ['attachments',{title:'Вложения',status:'checked',reason:'Проверяется доступная структура встроенных вложений и их синтаксис.'}],
+  ['warehouse_movement_order',{title:'Порядок движений в одну дату',status:'impossible',reason:'В модели нет времени операций; порядок записей одной даты достоверно установить нельзя.'}],
+  ['attachment_full_integrity',{title:'Полная целостность файлов',status:'impossible',reason:'В JSON v3 нет FileStore или внешнего источника, поэтому доступность и полную целостность файлов проверить нельзя.'}],
+  ['delivery_receiving',{title:'Доставка и приёмка',status:'impossible',reason:'В JSON v3 нет самостоятельных записей доставки и приёмки.'}],
+  ['tolling_materials',{title:'Давальческие материалы',status:'impossible',reason:'В JSON v3 нет модели давальческих материалов.'}],
+  ['inventory',{title:'Инвентаризация',status:'impossible',reason:'В JSON v3 нет результатов фактической инвентаризации для сверки.'}],
+  ['kits',{title:'Комплекты',status:'impossible',reason:'В JSON v3 нет состава и движения комплектов.'}],
+  ['historical_responsible',{title:'Исторические ответственные',status:'impossible',reason:'Поле assignee — текст, а исторической ID-связи с сотрудником в складских движениях нет.'}]
+ ].map(([id,value])=>[id,{id,...value,problems:0}]));
+ const directionRank={checked:0,partial:1,impossible:2};
+ const setDirection=(id,status,reason)=>{
+  const direction=directions.get(id);if(!direction||directionRank[status]<directionRank[direction.status])return;
+  direction.status=status;if(reason)direction.reason=reason;
+ };
+ const partial=(id,reason)=>setDirection(id,'partial',reason);
+ const impossible=(id,reason)=>setDirection(id,'impossible',reason);
+ const countProblem=id=>{const direction=directions.get(id);if(direction)direction.problems++;};
+ const unavailable=reason=>{
+  for(const id of ['warehouse_balances','warehouse_chronology','warehouse_movements','warehouse_links','warehouse_duplicates','warehouse_serials','attachments'])impossible(id,reason);
+ };
  const add=(code,category,severity,collection,index,row,field,message,reason,related=[])=>{
   issues.push({code,category,severity,record:{collection,index,id:typeof row?.id==='string'?row.id:null},
    field,message,reason,related:related.map(x=>({collection:x.collection,index:x.index,id:typeof x.row?.id==='string'?x.row.id:null}))});
  };
- const done=(complete=true)=>({readOnly:true,complete,issues,counts:issues.reduce((n,x)=>(n[x.severity]++,n),{error:0,warning:0,info:0})});
- if(raw===null)return done();
+ const directionReport=()=>directionOrder.map(id=>({...directions.get(id)}));
+ const done=(complete=true)=>({readOnly:true,complete,issues,counts:issues.reduce((n,x)=>(n[x.severity]++,n),{error:0,warning:0,info:0}),directions:directionReport()});
+ if(raw===null){unavailable('Сохранённая база отсутствует, поэтому направление проверить невозможно.');return done()}
  let data;
- try{data=JSON.parse(raw)}catch{add('invalid_json','structure','error','$',null,null,'','JSON не читается','Синтаксис исходной базы повреждён; содержимое не изменено.');return done(false)}
- if(!object(data)||data.version!==3){add('unsupported_version','structure','error','$',null,null,'version','Формат базы не поддерживается','Диагностика рассчитана на JSON version 3.');return done(false)}
+ try{data=JSON.parse(raw)}catch{add('invalid_json','structure','error','$',null,null,'','JSON не читается','Синтаксис исходной базы повреждён; содержимое не изменено.');unavailable('Исходный JSON не читается, поэтому направление проверить невозможно.');return done(false)}
+ if(!object(data)||data.version!==3){add('unsupported_version','structure','error','$',null,null,'version','Формат базы не поддерживается','Диагностика рассчитана на JSON version 3.');unavailable('Поддерживается только читаемый JSON version 3.');return done(false)}
  const missing=v=>v===undefined||v===null||typeof v==='string'&&!v.trim();
  const number=v=>!missing(v)&&(typeof v==='number'||typeof v==='string')&&Number.isFinite(Number(v))&&Number(v)>=0;
  const idOK=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]+$/.test(v);
@@ -286,6 +315,304 @@ function diagnoseRaw(raw){
   const a=adjustments.get(JSON.stringify([r.workerId,r.date,kind,Number(r[field])]))||[];
   if(a.length)report(e,'possible_double_deduction','finance','warning',field,'Возможное повторное удержание','Та же сумма удержания указана в табеле и отдельной зарплатной операции.',a.slice(0,10));
  }
+
+  // B0-05 reads only the parsed raw JSON. It deliberately does not call validate(),
+  // which is a write-time contract and can normalise optional collections in memory.
+  const collectionState=collection=>data[collection]===undefined?'absent':Array.isArray(data[collection])?'available':'damaged';
+  const collectionReason=(collection,state)=>state==='absent'?'В исходном JSON нет коллекции '+collection+'.':'Коллекция '+collection+' повреждена и недоступна для полной проверки.';
+  const warehouseState=collectionState('warehouse'),movementState=collectionState('warehouseMovements');
+  const warehouseRowsComplete=warehouseState==='available'&&rows.warehouse.length===data.warehouse.length;
+  const movementRowsComplete=movementState==='available'&&rows.warehouseMovements.length===data.warehouseMovements.length;
+  const b05Report=(direction,e,code,category,severity,field,message,reason,related=[])=>{
+   report(e,code,category,severity,field,message,reason,related);countProblem(direction);
+  };
+  const knownMovementKinds=['issue','return','restock','writeoff'];
+  const unitRule=value=>{
+   if(typeof value!=='string'||!value.trim())return 'unknown';
+   const unit=value.trim().toLocaleLowerCase('ru-RU').replace(/\s+/g,'').replace(/\./g,'').replace(/²/g,'2').replace(/³/g,'3');
+   if(['шт','штука','штуки','штук','ед','единица','единицы','единиц','pc','pcs','piece','pieces'].includes(unit))return 'discrete';
+   if(['кг','килограмм','килограмма','килограммов','г','гр','грамм','грамма','граммов','т','тонна','тонны','тонн','л','литр','литра','литров','мл','миллилитр','миллилитра','миллилитров','м','метр','метра','метров','см','мм','м2','квм','квадратныйметр','квадратныхметров','м3','кубм','кубическийметр','кубическихметров','мп','погм','kg','g','t','l','ml','m','cm','mm','m2','m3','sqm','cbm'].includes(unit))return 'fractional';
+   return 'unknown';
+  };
+  const uniqueEntry=(collection,id)=>idOK(id)&&(indexes[collection].get(id)||[]).length===1;
+  const textPart=value=>missing(value)?'':typeof value==='string'?value:null;
+  const itemFacts=new Map(),movementByItem=new Map(),serialGroups=new Map(),movementGroups=new Map();
+
+  if(warehouseState!=='available'){
+   const reason=collectionReason('warehouse',warehouseState);
+   impossible('warehouse_balances',reason);impossible('warehouse_chronology',reason);impossible('warehouse_links',reason);impossible('warehouse_serials',reason);
+   if(movementState==='available'){
+    partial('warehouse_movements',reason+' Поля движения доступны, но ссылки на инструмент проверить полностью нельзя.');
+    partial('warehouse_duplicates',reason+' Полные совпадения не подтверждаются без доступного инструмента.');
+   }else{impossible('warehouse_movements',collectionReason('warehouseMovements',movementState));impossible('warehouse_duplicates',collectionReason('warehouseMovements',movementState));}
+  }
+  if(movementState!=='available'){
+   const reason=collectionReason('warehouseMovements',movementState);
+   if(warehouseState==='available'){
+    partial('warehouse_balances',reason+' Итоговый остаток нельзя определить без полного журнала движений.');
+    partial('warehouse_links',reason+' Ссылки карточек инструмента проверены, но связи движений недоступны.');
+   }
+   impossible('warehouse_chronology',reason+' Последовательность между датами недоступна без журнала движений.');
+   impossible('warehouse_movements',reason);impossible('warehouse_duplicates',reason);
+  }
+  if(warehouseState==='available'&&!warehouseRowsComplete){
+   partial('warehouse_balances','Часть записей warehouse не является объектом, поэтому остатки проверены не полностью.');
+   partial('warehouse_chronology','Часть карточек warehouse не является объектом, поэтому начальные остатки для хронологии определены не полностью.');
+   partial('warehouse_links','Часть записей warehouse не является объектом, поэтому ссылки проверены не полностью.');
+   partial('warehouse_serials','Часть записей warehouse не является объектом, поэтому номера проверены не полностью.');
+  }
+  if(movementState==='available'&&!movementRowsComplete){
+   partial('warehouse_balances','Часть записей warehouseMovements не является объектом, поэтому остатки проверены не полностью.');
+   partial('warehouse_chronology','Часть записей warehouseMovements не является объектом, поэтому последовательность между датами проверена не полностью.');
+   partial('warehouse_movements','Часть записей warehouseMovements не является объектом, поэтому журнал проверен не полностью.');
+   partial('warehouse_duplicates','Часть записей warehouseMovements не является объектом, поэтому дубли проверены не полностью.');
+  }
+
+   // Number is retained as an overflow guard, but it is not reliable for a sign
+   // comparison of fractional quantities (for example, 0.3 - 0.1 - 0.2). Keep a
+   // finite decimal coefficient and its base-10 scale for that comparison instead.
+   // Preserve JSON number lexemes before JSON.parse can round them. Quoted JSON
+   // strings are matched first and left intact; only unquoted numbers are quoted
+   // in this private read-only copy. Structural validation uses the original data.
+   const quantitySources=JSON.parse(raw.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g,token=>token[0]==='"'?token:JSON.stringify(token)));
+   const sourceQuantity=(entry,field)=>quantitySources?.[entry.collection]?.[entry.index]?.[field];
+   const exactDecimalLimit=4096,decimalBigIntAvailable=typeof BigInt==='function',decimalZero=decimalBigIntAvailable?BigInt(0):null,decimalOne=decimalBigIntAvailable?BigInt(1):null,decimalTen=decimalBigIntAvailable?BigInt(10):null,decimalPowers=new Map(decimalBigIntAvailable?[[0,decimalOne]]:[]);
+   const decimalPower=power=>{
+    if(!decimalBigIntAvailable||!Number.isSafeInteger(power)||power<0||power>exactDecimalLimit)return null;
+    if(!decimalPowers.has(power))decimalPowers.set(power,decimalTen**BigInt(power));
+    return decimalPowers.get(power);
+   };
+   const exactDecimal=value=>{
+    if(!decimalBigIntAvailable)return null;
+    const source=typeof value==='string'?value.trim():typeof value==='number'?String(value):'';
+    if(source.length>exactDecimalLimit)return null;
+    const match=/^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/.exec(source);
+    if(!match)return null;
+    const whole=match[2]||'0',fraction=match[4]===undefined?(match[3]||''):match[4],exponent=Number(match[5]||0);
+    if(!Number.isSafeInteger(exponent)||Math.abs(exponent)>exactDecimalLimit)return null;
+    const digits=(whole+fraction).replace(/^0+/,'')||'0',rawScale=fraction.length-exponent;
+    if(digits.length>exactDecimalLimit||Math.abs(rawScale)>exactDecimalLimit)return null;
+    let coefficient;
+    try{coefficient=BigInt(digits)}catch{return null}
+    if(match[1]==='-')coefficient=-coefficient;
+    if(rawScale<0){
+     const multiplier=decimalPower(-rawScale);if(multiplier===null||digits.length-rawScale>exactDecimalLimit)return null;
+     coefficient*=multiplier;
+    }
+    return {coefficient,scale:Math.max(0,rawScale)};
+   };
+   const decimalDigits=coefficient=>(coefficient<decimalZero?-coefficient:coefficient).toString().length;
+   const addExactDecimal=(left,right)=>{
+    const scale=Math.max(left.scale,right.scale),leftShift=scale-left.scale,rightShift=scale-right.scale;
+    if(scale>exactDecimalLimit||decimalDigits(left.coefficient)+leftShift>exactDecimalLimit||decimalDigits(right.coefficient)+rightShift>exactDecimalLimit)return null;
+    const leftPower=decimalPower(leftShift),rightPower=decimalPower(rightShift);
+    if(leftPower===null||rightPower===null)return null;
+    const coefficient=left.coefficient*leftPower+right.coefficient*rightPower;
+    return decimalDigits(coefficient)>exactDecimalLimit?null:{coefficient,scale};
+   };
+   const signedExactMovement=(movement)=>{
+    const quantity=exactDecimal(sourceQuantity(movement.entry,'qty'));if(!quantity)return null;
+    return ['return','restock'].includes(movement.entry.row.kind)?quantity:{coefficient:-quantity.coefficient,scale:quantity.scale};
+   };
+   const reportQuantityPrecisionLimit=(item,entry=item.entry,field='baseQty',related=[])=>{
+    b05Report('warehouse_balances',entry,'warehouse_quantity_precision_limit','warehouse','warning',field,'Точная десятичная проверка количества недоступна','Исходное число нельзя надёжно представить или сложить как конечную десятичную запись в поддерживаемом диапазоне. Результат не подменяется нулём и не считается проверенным.',related);
+    countProblem('warehouse_chronology');
+    partial('warehouse_balances','Для части карточек точное сравнение количеств недоступно.');
+    partial('warehouse_chronology','Для части карточек точное междневное сравнение количеств недоступно.');
+    if(field==='qty'){
+     countProblem('warehouse_movements');
+     partial('warehouse_movements','Для части движений точная проверка знака или целочисленности количества недоступна.');
+    }
+   };
+   const quantityFacts=(entry,field,positive)=>{
+    const value=entry.row[field];
+    if(missing(value)||!['number','string'].includes(typeof value)||!Number.isFinite(Number(value)))return {valid:false,limited:false};
+    const exact=exactDecimal(sourceQuantity(entry,field));
+    if(!exact)return {valid:false,limited:true};
+    return {valid:positive?exact.coefficient>decimalZero:exact.coefficient>=decimalZero,limited:false,integer:exact.coefficient%decimalPower(exact.scale)===decimalZero,exact};
+   };
+   // Canonical key for a positive quantity: discard only mathematically
+   // redundant decimal zeros, without rounding or converting through Number.
+   const duplicateQuantityKey=exact=>{
+    const digits=exact.coefficient.toString(),trailing=/0+$/.exec(digits)?.[0].length||0,remove=Math.min(exact.scale,trailing);
+    return [digits.slice(0,digits.length-remove),exact.scale-remove];
+   };
+  for(const e of rows.warehouse){
+   const r=e.row,unit=unitRule(r.unit),quantity=quantityFacts(e,'baseQty',false),hasBase=quantity.valid;
+   let baseOK=hasBase,unitOK=true;
+   if(missing(r.baseQty))b05Report('warehouse_balances',e,'missing_warehouse_base_quantity','warehouse','error','baseQty','Начальное количество отсутствует','Расчётный остаток нельзя определить без warehouse.baseQty.');
+   else if(quantity.limited)reportQuantityPrecisionLimit({entry:e});
+   else if(!number(r.baseQty))countProblem('warehouse_balances');
+   else if(!hasBase)b05Report('warehouse_balances',e,'invalid_number','values','error','baseQty','Некорректное числовое значение','Начальное количество должно быть неотрицательным по исходной десятичной записи.');
+   if(unit==='discrete'&&hasBase&&!quantity.integer){
+    b05Report('warehouse_balances',e,'fractional_stock_quantity','warehouse','error','baseQty','Дробное количество штучного инструмента','Для распознанной штучной единицы измерения количество должно быть целым.');baseOK=false;unitOK=false;
+   }
+   if(unit==='unknown'){
+    b05Report('warehouse_balances',e,'unknown_warehouse_unit','warehouse','info','unit','Единица измерения не определена','Нельзя достоверно решить, допустимо ли дробное количество; исходное значение не изменено.');
+    partial('warehouse_balances','Для части записей единица измерения не распознана, поэтому правило дробных количеств применено не полностью.');
+   }
+   if(missing(r.objectId)){b05Report('warehouse_links',e,'missing_warehouse_object_link','warehouse','error','objectId','Отсутствует ссылка на объект','Карточка инструмента должна содержать явный objectId; по названию объекта ссылка не восстанавливается.');partial('warehouse_links','Часть карточек не содержит явной ссылки на объект.');}
+   else if(!uniqueEntry('objects',r.objectId)){countProblem('warehouse_links');partial('warehouse_links','Часть ссылок на объект нельзя однозначно разрешить.');}
+   if(!missing(r.serial)&&typeof r.serial!=='string'){
+    b05Report('warehouse_serials',e,'invalid_warehouse_serial','warehouse','error','serial','Инвентарный номер имеет неверный формат','Для сравнения нужен текстовый инвентарный номер.');
+    partial('warehouse_serials','Часть инвентарных номеров имеет неверный формат.');
+   }else if(typeof r.serial==='string'&&r.serial.trim()){
+    const key=r.serial.trim().toLocaleLowerCase('ru-RU'),group=serialGroups.get(key)||[];group.push(e);serialGroups.set(key,group);
+   }
+   if(idOK(r.id)&&uniqueEntry('warehouse',r.id))itemFacts.set(r.id,{entry:e,unit,baseOK,unitOK,base:Number(r.baseQty)});
+  }
+
+  for(const e of rows.warehouseMovements){
+   const r=e.row,dateOK=validDate(r.date),kindOK=knownMovementKinds.includes(r.kind),quantity=quantityFacts(e,'qty',true),qtyOK=quantity.valid;
+   const itemOK=uniqueEntry('warehouse',r.itemId),item=itemOK?itemFacts.get(r.itemId):undefined;
+   let unitOK=true;
+   if(!dateOK)countProblem('warehouse_movements');
+   if(!kindOK)b05Report('warehouse_movements',e,'invalid_warehouse_movement_kind','warehouse','error','kind','Неизвестный вид складской операции','Допустимы выдача, возврат, пополнение или списание; запись не изменена.');
+   if(quantity.limited)reportQuantityPrecisionLimit(item||{entry:e},e,'qty');
+   else if(!qtyOK)b05Report('warehouse_movements',e,'invalid_warehouse_movement_quantity','warehouse','error','qty','Количество движения отсутствует или недопустимо','Для движения нужно положительное конечное количество по исходной десятичной записи.');
+   if(!itemOK){
+    countProblem('warehouse_links');partial('warehouse_balances','Часть движений нельзя связать с единственной карточкой инструмента, поэтому остатки рассчитаны не полностью.');
+    partial('warehouse_duplicates','Часть движений нельзя сопоставить с инструментом, поэтому дубли проверены не полностью.');
+   }
+   if(item&&item.unit==='discrete'&&qtyOK&&!quantity.integer){
+    b05Report('warehouse_movements',e,'fractional_stock_quantity','warehouse','error','qty','Дробное количество штучного инструмента','Для распознанной штучной единицы измерения количество движения должно быть целым.');unitOK=false;
+   }
+   if(item&&item.unit==='unknown'&&qtyOK&&!quantity.integer)partial('warehouse_movements','Для части движений единица измерения не распознана, поэтому правило дробных количеств применено не полностью.');
+   if(itemOK){const list=movementByItem.get(r.itemId)||[];list.push({entry:e,dateOK,kindOK,qtyOK,unitOK});movementByItem.set(r.itemId,list)}
+   const assignee=textPart(r.assignee),notes=textPart(r.notes);
+   if(itemOK&&dateOK&&kindOK&&qtyOK&&assignee!==null&&notes!==null){
+    const key=JSON.stringify([r.itemId,r.date,r.kind,duplicateQuantityKey(quantity.exact),assignee,notes]),group=movementGroups.get(key)||[];group.push(e);movementGroups.set(key,group);
+   }else partial('warehouse_duplicates',quantity.limited?
+    'Для части движений точное сравнение количества недоступно (нет BigInt, превышен предел точности или запись не поддерживается). Эти записи не сопоставлены; доступные движения проверены.':
+    'Часть движений не сопоставлена из-за некорректных или недоступных реквизитов (инструмент, дата, вид, количество, получатель или примечание). Доступные движения проверены.');
+  }
+  for(const [entries,fields] of [[rows.warehouse,[['workerId','workers'],['itemId','warehouse']]],[rows.warehouseMovements,[['objectId','objects'],['workerId','workers']]]])for(const e of entries)for(const [field,target] of fields)if(!missing(e.row[field])&&!uniqueEntry(target,e.row[field]))countProblem('warehouse_links');
+
+  const relatedEntries=(group,current)=>{
+   const related=[];
+   for(const other of group){if(other!==current)related.push(other);if(related.length===10)break;}
+   return related;
+  };
+  for(const group of serialGroups.values())if(group.length>1)for(const e of group)
+   b05Report('warehouse_serials',e,'possible_duplicate_serial','warehouse','warning','serial','Возможное совпадение инвентарного номера','Номера совпадают без учёта регистра и пробелов по краям. Сверьте связанные карточки вручную.',relatedEntries(group,e));
+  for(const group of movementGroups.values())if(group.length>1)for(const e of group)
+   b05Report('warehouse_duplicates',e,'possible_duplicate_warehouse_movement','warehouse','warning','','Возможный дубль движения','Совпадают инструмент, дата, вид, количество, получатель и примечание. Это кандидат для ручной сверки; записи не объединены.',relatedEntries(group,e));
+
+  const reportQuantityOverflow=(item,related=[])=>{
+   b05Report('warehouse_balances',item.entry,'warehouse_quantity_overflow','warehouse','error','baseQty','Расчёт количества выходит за пределы конечного числа','Промежуточный или итоговый остаток невозможно определить достоверно; ошибочное значение не заменяется нулём.',related);
+   countProblem('warehouse_chronology');
+   partial('warehouse_balances','Для части карточек расчёт количества выходит за пределы конечного числа.');
+   partial('warehouse_chronology','Для части карточек междневный расчёт выходит за пределы конечного числа.');
+  };
+  if(warehouseState==='available'&&movementState==='available')for(const [id,item] of itemFacts){
+   const movements=movementByItem.get(id)||[];
+   if(!item.baseOK||!item.unitOK||movements.some(m=>!m.kindOK||!m.qtyOK||!m.unitOK)){
+    partial('warehouse_balances','Для части карточек остаток нельзя определить из-за некорректных исходных количеств или движений.');
+    partial('warehouse_chronology','Для части карточек последовательность между датами нельзя определить из-за некорректных исходных количеств или движений.');
+    continue;
+   }
+    let numberBalance=item.base,exactBalance=exactDecimal(sourceQuantity(item.entry,'baseQty')),calculationOK=Number.isFinite(numberBalance),exactCalculationOK=!!exactBalance;
+    if(!exactCalculationOK){reportQuantityPrecisionLimit(item);continue}
+    const exactDeltas=new Map();
+   for(const movement of movements){
+     const r=movement.entry.row,q=Number(r.qty),delta=['return','restock'].includes(r.kind)?q:-q,next=numberBalance+delta;
+    if(!Number.isFinite(next)){reportQuantityOverflow(item,movements.map(m=>m.entry).slice(0,10));calculationOK=false;break;}
+     const exactDelta=signedExactMovement(movement),exactNext=exactDelta&&addExactDecimal(exactBalance,exactDelta);
+     if(!exactNext){reportQuantityPrecisionLimit(item,movement.entry,'qty',[item.entry,...movements.filter(other=>other!==movement).map(other=>other.entry).slice(0,9)]);exactCalculationOK=false;break;}
+     numberBalance=next;exactBalance=exactNext;exactDeltas.set(movement,exactDelta);
+   }
+    if(!calculationOK||!exactCalculationOK)continue;
+    if(exactBalance.coefficient<decimalZero)b05Report('warehouse_balances',item.entry,'negative_warehouse_balance','warehouse','error','baseQty','Отрицательный расчётный остаток','Формула использует начальное количество и доступные движения. Порядок операций внутри одной даты не устанавливался.',movements.map(m=>m.entry).slice(0,10));
+    if(item.entry.row.condition==='Списан'&&exactBalance.coefficient>decimalZero)b05Report('warehouse_balances',item.entry,'warehouse_condition_balance_mismatch','warehouse','warning','condition','Статус карточки сам по себе не уменьшает количество. Проверьте, не отсутствует ли операция списания.',movements.map(m=>m.entry).slice(0,10));
+
+   if(movements.some(m=>!m.dateOK)){
+    partial('warehouse_chronology','Часть движений имеет некорректную дату, поэтому последовательность между датами проверена не полностью.');
+    continue;
+   }
+   const days=new Map();let chronologyOK=true;
+   for(const movement of movements){
+    const r=movement.entry.row,q=Number(r.qty),delta=['return','restock'].includes(r.kind)?q:-q;
+     const day=days.get(r.date)||{numberDelta:0,exactDelta:{coefficient:decimalZero,scale:0},entries:[]},nextDelta=day.numberDelta+delta;
+    if(!Number.isFinite(nextDelta)){reportQuantityOverflow(item,[movement.entry]);chronologyOK=false;break;}
+     const exactNextDelta=addExactDecimal(day.exactDelta,exactDeltas.get(movement));
+     if(!exactNextDelta){reportQuantityPrecisionLimit(item,movement.entry,'qty',[item.entry,...day.entries.slice(0,9)]);chronologyOK=false;break;}
+     day.numberDelta=nextDelta;day.exactDelta=exactNextDelta;day.entries.push(movement.entry);days.set(r.date,day);
+   }
+   if(!chronologyOK||days.size<2)continue;
+    let historicalNumberBalance=item.base,historicalExactBalance=exactDecimal(sourceQuantity(item.entry,'baseQty'));
+   for(const [date,day] of [...days.entries()].sort(([a],[b])=>a.localeCompare(b))){
+     const next=historicalNumberBalance+day.numberDelta;
+     if(!Number.isFinite(next)){reportQuantityOverflow(item,[item.entry,...day.entries.filter(entry=>entry!==item.entry).slice(0,9)]);break;}
+     const exactNext=addExactDecimal(historicalExactBalance,day.exactDelta);
+     if(!exactNext){reportQuantityPrecisionLimit(item,item.entry,'baseQty',[...day.entries.slice(0,10)]);break;}
+     historicalNumberBalance=next;historicalExactBalance=exactNext;
+     if(historicalExactBalance.coefficient<decimalZero){
+     const record=day.entries[0],related=[item.entry,...relatedEntries(day.entries,record)].slice(0,10);
+     b05Report('warehouse_chronology',record,'possible_warehouse_intermediate_negative_balance','warehouse','warning','date','Возможен отрицательный промежуточный остаток','После дневного итога за '+date+' расчётный остаток отрицателен. warehouse.baseQty не имеет даты, поэтому достоверность начального исторического остатка ограничена; операции одной даты не упорядочиваются. Это кандидат для ручной сверки, не доказанная ошибка.',related);
+    }
+   }
+  }
+
+  const base64Info=value=>{
+   if(typeof value!=='string'||!value||value!==value.trim())return {valid:false};
+   const match=/^data:([^;,]+);base64,([A-Za-z0-9+/=]*)$/i.exec(value);if(!match)return {valid:false};
+   const mime=match[1].toLowerCase(),payload=match[2],equals=payload.indexOf('=');
+   if(!payload||payload.length%4!==0||equals!==-1&&equals<payload.length-2||!/^[A-Za-z0-9+/]*={0,2}$/.test(payload))return {valid:false};
+   let bytes=null;try{if(typeof atob==='function'){const sample=payload.length>64?payload.slice(0,64):payload;bytes=atob(sample)}}catch{return {valid:false}}
+   return {valid:true,mime,bytes};
+  };
+  const hasBytes=(bytes,values,offset=0)=>typeof bytes==='string'&&values.every((value,index)=>bytes.charCodeAt(offset+index)===value);
+  const signatureState=(mime,bytes)=>{
+   if(!bytes)return 'unknown';
+   if(mime==='image/png')return hasBytes(bytes,[137,80,78,71,13,10,26,10])?'valid':'corrupt';
+   if(['image/jpeg','image/jpg'].includes(mime))return hasBytes(bytes,[255,216,255])?'valid':'corrupt';
+   if(mime==='image/gif')return hasBytes(bytes,[71,73,70,56])?'valid':'corrupt';
+   if(mime==='image/webp')return hasBytes(bytes,[82,73,70,70])&&hasBytes(bytes,[87,69,66,80],8)?'valid':'corrupt';
+   if(mime==='image/bmp')return hasBytes(bytes,[66,77])?'valid':'corrupt';
+   if(mime==='application/pdf')return hasBytes(bytes,[37,80,68,70,45])?'valid':'corrupt';
+   if(['application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(mime))return hasBytes(bytes,[80,75,3,4])?'valid':'corrupt';
+   return 'unknown';
+  };
+  const worksState=collectionState('works'),expensesState=collectionState('expenses');
+  const attachmentAvailable=worksState==='available'||expensesState==='available';
+  if(!attachmentAvailable)impossible('attachments','Коллекции works и expenses недоступны для проверки вложений.');
+  else if(worksState!=='available'||expensesState!=='available')partial('attachments','Доступна только часть коллекций с вложениями.');
+  if(worksState==='available'&&rows.works.length!==data.works.length)partial('attachments','Часть записей works не является объектом, поэтому вложения проверены не полностью.');
+  if(expensesState==='available'&&rows.expenses.length!==data.expenses.length)partial('attachments','Часть записей expenses не является объектом, поэтому вложения проверены не полностью.');
+  for(const e of rows.works){
+   const photos=e.row.photos;if(photos===undefined)continue;
+   if(!Array.isArray(photos)){b05Report('attachments',e,'invalid_photos_structure','attachments','error','photos','Список фотографий имеет неверный формат','Ожидается массив встроенных ссылок; содержимое не изменено.');partial('attachments','Часть списков фотографий имеет неверный формат.');continue;}
+   photos.forEach((photo,index)=>{
+    const field='photos['+index+']';if(typeof photo!=='string'){b05Report('attachments',e,'invalid_photo_attachment','attachments','error',field,'Фотография имеет неверный формат','Ожидается строка data URL; содержимое вложения не выводится.');partial('attachments','Часть фотографий имеет неверный формат.');return}
+    if(!photo.trim()){b05Report('attachments',e,'empty_photo_attachment','attachments','error',field,'Фотография пуста','Встроенная строка вложения отсутствует.');return}
+   const info=base64Info(photo);if(!info.valid||!info.mime.startsWith('image/')){
+    const isDataUrl=/^data:/i.test(photo);
+    b05Report('attachments',e,isDataUrl?'corrupt_photo_attachment':'invalid_photo_attachment','attachments','error',field,isDataUrl?'Фотография распознаётся как повреждённая':'Фотография имеет неподдерживаемый формат',isDataUrl?'Проверяется только синтаксис встроенного image data URL; содержимое вложения не выводится.':'Проверяются только встроенные image data URL; доступность внешнего файла не заявляется.');
+    if(!isDataUrl)partial('attachments','Часть фотографий не является встроенным image data URL и недоступна для полной проверки.');
+    return;
+   }
+    if(signatureState(info.mime,info.bytes)==='corrupt')b05Report('attachments',e,'corrupt_photo_attachment','attachments','warning',field,'Фотография распознаётся как повреждённая','Тип data URL не соответствует распознаваемому заголовку файла. Полная проверка изображения не выполнялась.');
+   });
+  }
+  const receiptMimes=new Set(['image/png','image/jpeg','image/jpg','image/gif','image/webp','application/pdf','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','text/plain','text/csv']);
+  for(const e of rows.expenses){
+   const receipts=e.row.receipts;if(receipts===undefined)continue;
+   if(!Array.isArray(receipts)){b05Report('attachments',e,'invalid_receipts_structure','attachments','error','receipts','Список документов имеет неверный формат','Ожидается массив встроенных документов; содержимое не изменено.');partial('attachments','Часть списков документов имеет неверный формат.');continue;}
+   receipts.forEach((receipt,index)=>{
+    const prefix='receipts['+index+']';if(!object(receipt)){b05Report('attachments',e,'invalid_receipt_attachment','attachments','error',prefix,'Документ имеет неверный формат','Ожидается объект со встроенными данными и именем файла.');partial('attachments','Часть документов имеет неверный формат.');return}
+    if(typeof receipt.name!=='string'||!receipt.name.trim())b05Report('attachments',e,'empty_receipt_attachment','attachments','warning',prefix+'.name','У документа отсутствует имя','Имя вложения пусто или имеет неверный формат.');
+    if(typeof receipt.data!=='string'||!receipt.data.trim()){b05Report('attachments',e,'empty_receipt_attachment','attachments','error',prefix+'.data','Документ пуст','Встроенная строка вложения отсутствует.');return}
+   const info=base64Info(receipt.data);if(!info.valid){
+    const isDataUrl=/^data:/i.test(receipt.data);
+    b05Report('attachments',e,isDataUrl?'corrupt_receipt_attachment':'invalid_receipt_attachment','attachments','error',prefix+'.data',isDataUrl?'Документ распознаётся как повреждённый':'Документ имеет неподдерживаемый формат',isDataUrl?'Проверяется только синтаксис data URL; содержимое вложения не выводится.':'Проверяются только встроенные data URL; доступность внешнего файла не заявляется.');
+    if(!isDataUrl)partial('attachments','Часть документов не является встроенным data URL и недоступна для полной проверки.');
+    return;
+   }
+   if(!receiptMimes.has(info.mime)){b05Report('attachments',e,'unsupported_receipt_attachment','attachments','warning',prefix+'.data','Тип документа не поддерживается для проверки','Доступна только проверка встроенных изображений, PDF, DOCX, XLSX, TXT и CSV.');partial('attachments','Часть документов имеет неподдерживаемый тип для доступной проверки.');return}
+    if(signatureState(info.mime,info.bytes)==='corrupt')b05Report('attachments',e,'corrupt_receipt_attachment','attachments','warning',prefix+'.data','Документ распознаётся как повреждённый','Тип data URL не соответствует распознаваемому заголовку файла. Полная проверка документа не выполнялась.');
+    if(receipt.verified!==undefined&&typeof receipt.verified!=='boolean')b05Report('attachments',e,'invalid_receipt_attachment','attachments','warning',prefix+'.verified','Статус проверки документа имеет неверный формат','Ожидается логическое значение статуса; содержимое документа не изменено.');
+   });
+  }
  return done(complete);
 }
 const api={diagnoseRaw,validate,create,createDataStore:create,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
