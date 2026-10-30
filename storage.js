@@ -429,7 +429,13 @@ function diagnoseRaw(raw){
     if(missing(value)||!['number','string'].includes(typeof value)||!Number.isFinite(Number(value)))return {valid:false,limited:false};
     const exact=exactDecimal(sourceQuantity(entry,field));
     if(!exact)return {valid:false,limited:true};
-    return {valid:positive?exact.coefficient>decimalZero:exact.coefficient>=decimalZero,limited:false,integer:exact.coefficient%decimalPower(exact.scale)===decimalZero};
+    return {valid:positive?exact.coefficient>decimalZero:exact.coefficient>=decimalZero,limited:false,integer:exact.coefficient%decimalPower(exact.scale)===decimalZero,exact};
+   };
+   // Canonical key for a positive quantity: discard only mathematically
+   // redundant decimal zeros, without rounding or converting through Number.
+   const duplicateQuantityKey=exact=>{
+    const digits=exact.coefficient.toString(),trailing=/0+$/.exec(digits)?.[0].length||0,remove=Math.min(exact.scale,trailing);
+    return [digits.slice(0,digits.length-remove),exact.scale-remove];
    };
   for(const e of rows.warehouse){
    const r=e.row,unit=unitRule(r.unit),quantity=quantityFacts(e,'baseQty',false),hasBase=quantity.valid;
@@ -475,8 +481,10 @@ function diagnoseRaw(raw){
    if(itemOK){const list=movementByItem.get(r.itemId)||[];list.push({entry:e,dateOK,kindOK,qtyOK,unitOK});movementByItem.set(r.itemId,list)}
    const assignee=textPart(r.assignee),notes=textPart(r.notes);
    if(itemOK&&dateOK&&kindOK&&qtyOK&&assignee!==null&&notes!==null){
-    const key=JSON.stringify([r.itemId,r.date,r.kind,Number(r.qty),assignee,notes]),group=movementGroups.get(key)||[];group.push(e);movementGroups.set(key,group);
-   }else if(assignee===null||notes===null)partial('warehouse_duplicates','Часть текстовых реквизитов движения имеет неверный формат, поэтому дубли проверены не полностью.');
+    const key=JSON.stringify([r.itemId,r.date,r.kind,duplicateQuantityKey(quantity.exact),assignee,notes]),group=movementGroups.get(key)||[];group.push(e);movementGroups.set(key,group);
+   }else partial('warehouse_duplicates',quantity.limited?
+    'Для части движений точное сравнение количества недоступно (нет BigInt, превышен предел точности или запись не поддерживается). Эти записи не сопоставлены; доступные движения проверены.':
+    'Часть движений не сопоставлена из-за некорректных или недоступных реквизитов (инструмент, дата, вид, количество, получатель или примечание). Доступные движения проверены.');
   }
   for(const [entries,fields] of [[rows.warehouse,[['workerId','workers'],['itemId','warehouse']]],[rows.warehouseMovements,[['objectId','objects'],['workerId','workers']]]])for(const e of entries)for(const [field,target] of fields)if(!missing(e.row[field])&&!uniqueEntry(target,e.row[field]))countProblem('warehouse_links');
 

@@ -7,7 +7,7 @@ const fixture=()=>({version:3,_revision:{number:12,token:'unchanged'},objects:[{
  server=http.createServer((req,res)=>{const f=req.url==='/'?'index.html':req.url.slice(1);if(!['index.html','storage.js'].includes(f))return res.writeHead(404).end();res.setHeader('Content-Type',f.endsWith('.js')?'text/javascript':'text/html');res.end(fs.readFileSync(path.join(__dirname,'..',f)))});
  await new Promise(r=>server.listen(0,'127.0.0.1',r));const origin='http://127.0.0.1:'+server.address().port;
  browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'msedge',executablePath:process.env.BROWSER_EXECUTABLE_PATH||undefined,headless:true});
- async function scenario(name,raw,fn){
+ async function scenario(name,raw,fn,beforeRun){
   const ctx=await browser.newContext();await ctx.route('**/*',r=>r.request().url().startsWith(origin)?r.continue():r.abort());
   await ctx.addInitScript(raw=>{
    localStorage.setItem('moiShtab_v03',raw);localStorage.setItem('moiShtab_v03_before_import','original backup');
@@ -17,6 +17,7 @@ const fixture=()=>({version:3,_revision:{number:12,token:'unchanged'},objects:[{
   const p=await ctx.newPage(),errors=[];p.on('pageerror',e=>errors.push(e.message));await p.goto(origin);
   const before=await p.evaluate(()=>({snapshot:persistence.readSnapshot(),state:persistence.status(),memory:JSON.stringify(db)}));
   assert.equal(await p.locator('#diagnosticsResults').innerText(),'');
+  if(beforeRun)await beforeRun(p);
   await p.locator('#runDiagnostics').click();await fn(p);
   assert.equal(await p.evaluate(()=>localStorage.getItem(KEY)),raw);
   assert.equal(await p.evaluate(()=>localStorage.getItem(KEY+'_before_import')),'original backup');
@@ -102,6 +103,32 @@ const fixture=()=>({version:3,_revision:{number:12,token:'unchanged'},objects:[{
   assert.match(text,/Точная десятичная проверка количества недоступна/);
   assert.match(await p.locator('#diagnosticsDirections').innerText(),/Частично/);
  });
+ const duplicateRaw=quantities=>{
+  const d=fixture();d.warehouse=[{id:'material',name:'Material',objectId:'o',baseQty:10,unit:'кг'}];
+  d.warehouseMovements=quantities.map((qty,i)=>({id:'m'+i,itemId:'material',date:'2026-01-10',kind:'restock',qty:'Q'+i,assignee:'Worker',notes:'Act'}));
+  let raw=JSON.stringify(d);quantities.forEach((qty,i)=>{raw=raw.replace('"Q'+i+'"',qty)});return raw;
+ };
+ const duplicateResult=p=>p.evaluate(()=>{
+  const r=ProrabkaStorage.diagnoseRaw(persistence.readRaw());
+  return {direction:r.directions.find(d=>d.id==='warehouse_duplicates'),ids:r.issues.filter(i=>i.code==='possible_duplicate_warehouse_movement').map(i=>i.record.id)};
+ });
+ await scenario('distinct exact quantities do not render false duplicate candidates',duplicateRaw(['1e-400','2e-400','1','1.0000000000000001']),async p=>{
+  const r=await duplicateResult(p);assert.equal(r.direction.status,'checked');assert.deepEqual(r.ids,[]);
+  assert.doesNotMatch(await p.locator('#diagnosticsResults').innerText(),/Возможный дубль движения/);
+ });
+ await scenario('equal decimal forms retain all real duplicate candidates',duplicateRaw(['1','1.0','1e0','10e-1']),async p=>{
+  const r=await duplicateResult(p);assert.equal(r.direction.status,'checked');assert.deepEqual(r.ids,['m0','m1','m2','m3']);
+  assert.match(await p.locator('#diagnosticsResults').innerText(),/Возможный дубль движения/);
+ });
+ await scenario('unsupported precision limits duplicate coverage but preserves available candidates',duplicateRaw(['1','1.0','1e-4097','"0x10"']),async p=>{
+  const r=await duplicateResult(p);assert.equal(r.direction.status,'partial');assert.deepEqual(r.ids,['m0','m1']);
+  assert.match(await p.locator('#diagnosticsDirections').innerText(),/точное сравнение количества недоступно/);
+ });
+ await scenario('missing BigInt makes duplicate comparison partial without unproven candidates',duplicateRaw(['1','1.0']),async p=>{
+  const r=await duplicateResult(p);assert.equal(r.direction.status,'partial');assert.deepEqual(r.ids,[]);
+  assert.doesNotMatch(await p.locator('#diagnosticsResults').innerText(),/Возможный дубль движения/);
+  assert.match(await p.locator('#diagnosticsDirections').innerText(),/BigInt/);
+ },p=>p.evaluate(()=>{window.BigInt=undefined}));
  const missingMoves=fixture();missingMoves.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
  await scenario('unavailable directions explain missing data without claiming no problems',JSON.stringify(missingMoves),async p=>{
   const coverage=await p.locator('#diagnosticsDirections').innerText();

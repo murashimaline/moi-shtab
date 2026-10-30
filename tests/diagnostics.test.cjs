@@ -363,6 +363,51 @@ test('B0-05 flags exact movement candidates and serial matches after trim/case-f
  const serialIssues=r.issues.filter(i=>i.code==='possible_duplicate_serial');assert.ok(serialIssues.every(i=>i.related.length===1));
  assert.equal(JSON.stringify(d),before);
 });
+const duplicateRaw=quantities=>{
+ const d=fixture();d.warehouse=[{id:'material',name:'Material',objectId:'o',baseQty:10,unit:'кг'}];
+ d.warehouseMovements=quantities.map((qty,i)=>({id:'m'+i,itemId:'material',date:'2026-01-10',kind:'restock',qty:'Q'+i,assignee:'Worker',notes:'Act'}));
+ let raw=JSON.stringify(d);quantities.forEach((qty,i)=>{raw=raw.replace('"Q'+i+'"',qty)});return raw;
+};
+test('B0-05/12 compares tiny and close quantities exactly without false duplicates or writes',()=>{
+ for(const quantities of [['1e-400','2e-400'],['1','1.0000000000000001'],['"0.001"','"0.0010000000000000001"']]){
+  const raw=duplicateRaw(quantities),r=diagnoseRaw(raw);
+  assert.equal(count(r,'possible_duplicate_warehouse_movement'),0);
+  assert.equal(direction(r,'warehouse_duplicates').status,'checked');
+  const backing=disk(raw),store=createDataStore(backing,KEY,fixture),state=store.status(),snap=store.readSnapshot(),entries=[...backing.values];
+  diagnoseRaw(store.readRaw());assert.deepEqual(backing.writes,[]);assert.deepEqual([...backing.values],entries);
+  assert.deepEqual(store.status(),state);assert.deepEqual(store.readSnapshot(),snap);
+ }
+});
+test('B0-05/12 groups mathematically equal quantities and keeps other movement fields distinct',()=>{
+ for(const quantities of [['1','1.0','1e0','10e-1'],['1e-400','10e-401','"0.'+'0'.repeat(399)+'1"'],['100','100.0','1e2']]){
+  const r=diagnoseRaw(duplicateRaw(quantities));assert.equal(count(r,'possible_duplicate_warehouse_movement'),quantities.length);
+  assert.equal(direction(r,'warehouse_duplicates').status,'checked');
+ }
+ const original=JSON.parse(duplicateRaw(['1','1']));
+ for(const fields of [{notes:'Other'},{assignee:'Other'},{date:'2026-01-11'},{kind:'issue'},{itemId:'other'}]){
+  const d=JSON.parse(JSON.stringify(original));d.warehouse.push({...d.warehouse[0],id:'other'});Object.assign(d.warehouseMovements[1],fields);
+  assert.equal(count(check(d),'possible_duplicate_warehouse_movement'),0,JSON.stringify(fields));
+ }
+});
+test('B0-05/12 marks skipped quantities partial while continuing to find available duplicates',()=>{
+ for(const qty of ['1e-4097','"0x10"','"0.'+'0'.repeat(4096)+'1"']){
+  const r=diagnoseRaw(duplicateRaw(['1','1.0',qty,qty]));
+  assert.deepEqual(r.issues.filter(i=>i.code==='possible_duplicate_warehouse_movement').map(i=>i.record.id),['m0','m1']);
+  const status=direction(r,'warehouse_duplicates');assert.equal(status.status,'partial');assert.match(status.reason,/точн|количеств/);
+ }
+ for(const fields of [{qty:0},{date:'bad'},{kind:'bad'},{notes:{}},{itemId:'missing'}]){
+  const d=JSON.parse(duplicateRaw(['1','1','1']));Object.assign(d.warehouseMovements[2],fields);const r=check(d);
+  assert.equal(count(r,'possible_duplicate_warehouse_movement'),2);
+  assert.equal(direction(r,'warehouse_duplicates').status,'partial');
+ }
+});
+test('B0-05/12 cannot assert duplicate quantities without BigInt',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),context={module:{exports:{}},BigInt:undefined};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../storage.js'),'utf8'),context);
+ const raw=duplicateRaw(['1','1.0']),r=context.module.exports.diagnoseRaw(raw);
+ assert.equal(count(r,'possible_duplicate_warehouse_movement'),0);
+ const status=direction(r,'warehouse_duplicates');assert.equal(status.status,'partial');assert.match(status.reason,/BigInt/);
+});
 test('B0-05 bounds related records for large duplicate serial groups',()=>{
  const d=fixture();d.warehouse=Array.from({length:5000},(_,i)=>({id:'tool'+i,name:'Tool '+i,objectId:'o',baseQty:1,unit:'шт.',serial:'DUPLICATE-SERIAL'}));
  const r=check(d),duplicates=r.issues.filter(i=>i.code==='possible_duplicate_serial');
