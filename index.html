@@ -358,7 +358,7 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 
 
 </main>
-<footer><div class="footer-backup" id="footerBackup"><button class="btn secondary footer-backup-toggle" id="backupToggle" type="button">Резервная копия · экспорт / импорт JSON</button><div hidden="" id="backupDetails"><div class="panel"><h2>Резервное копирование</h2><p>Экспорт сохраняет объекты, график работ и стадии, журнал, рабочих, табель, зарплатные операции, расходы с чеками, поступления и другие данные в один JSON-файл.</p><div class="actions"><button class="btn" id="exportBtn">Экспортировать все данные</button><label class="btn secondary" style="display:inline-flex;justify-content:center;cursor:pointer">Импортировать JSON<input accept=".json,application/json" id="importFile" style="display:none" type="file"/></label></div><p class="notice" style="margin-top:12px">Импорт заменит текущие данные на этом устройстве. Сначала экспортируйте текущую копию. Храните резервные файлы в безопасном месте.</p><div aria-live="polite" id="backupStatus"></div></div></div></div><p class="footer-note">Прорабка 0.9.7 · Данные хранятся только в браузере этого устройства. Сохраняйте резервную копию перед обновлением.</p></footer>
+<footer><div class="footer-backup" id="footerBackup"><button class="btn secondary footer-backup-toggle" id="backupToggle" type="button">Резервная копия · экспорт / импорт JSON</button><div hidden="" id="backupDetails"><div class="panel"><h2>Экспорт и импорт JSON</h2><p>Экспортирует сохранённый JSON этого устройства с имеющимися в нём данными и встроенными вложениями. Несохранённые правки не включаются. Подготовка скачивания не подтверждает сохранение файла на устройстве или полноту резервной копии всего архива.</p><div class="actions"><button class="btn" id="exportBtn">Экспортировать сохранённый JSON</button><label class="btn secondary" style="display:inline-flex;justify-content:center;cursor:pointer">Импортировать JSON<input accept=".json,application/json" id="importFile" style="display:none" type="file"/></label></div><p class="notice" style="margin-top:12px">Импорт заменит текущие данные на этом устройстве. Перед заменой сохраните исходный JSON и отдельно проверьте возможность восстановления. Храните резервные файлы в безопасном месте.</p><div aria-live="polite" id="backupStatus"></div></div></div></div><p class="footer-note">Прорабка 0.9.7 · Данные хранятся только в браузере этого устройства. Сохраняйте резервную копию перед обновлением.</p></footer>
 <script src="storage.js"></script>
 <script>
 // Historical timesheet import: additive, validated and repeatable on each device.
@@ -638,7 +638,11 @@ function storageNotice(message){
  if(!panel){panel=document.createElement('div');panel.id='storageNotice';panel.setAttribute('role','alert');panel.style.cssText='position:sticky;top:0;z-index:9999;background:#fff0d0;color:#392700;padding:16px;border:2px solid #a65b00';document.body.prepend(panel)}
  panel.replaceChildren(document.createTextNode(message+' '));
  const reload=document.createElement('button');reload.textContent='Перезагрузить';reload.onclick=()=>location.reload();panel.append(reload);
- const download=document.createElement('button');download.textContent='Скачать исходные данные';download.onclick=()=>{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([persistence.status().raw??''],{type:'application/json'}));a.download='prorabka-recovery.json';a.click();URL.revokeObjectURL(a.href)};panel.append(download);
+ const download=document.createElement('button');download.id='downloadRawRecovery';download.textContent='Скачать исходный JSON (непроверенная выгрузка)';download.onclick=()=>{
+  const status=document.getElementById('backupStatus');status.textContent='Подготовка непроверенной выгрузки исходного JSON…';
+  try{const raw=persistence.readRaw();if(raw===null)throw Error('Сохранённый источник отсутствует.');downloadJsonText(raw,'prorabka-recovery.json');status.textContent='Исходный JSON подготовлен к скачиванию без проверки пригодности к восстановлению. Это не подтверждённая резервная копия.'}
+  catch(error){status.textContent='Исходный JSON не подготовлен: '+error.message}
+ };panel.append(download);
 }
 function save(options){
  const result=persistence.commit(db,options);db=result.value;
@@ -1184,7 +1188,23 @@ document.getElementById('printFinance').addEventListener('click',()=>{
  const {from,to,oid}=financeRange();const report=document.getElementById('financeReport').innerHTML,objects=document.getElementById('financeByObjects').innerHTML;
  w.document.open();w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Финансовый отчёт ${esc(from)} — ${esc(to)}</title><style>@page{size:A4;margin:15mm}body{font:12px/1.6 Arial,sans-serif;color:#152238}h1{color:#075ba1}h2{margin-top:30px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border:1px solid #bbc9d9;text-align:left}th{background:#edf4fa}.table-wrap{width:100%}.muted-small{font-size:10px;color:#4c617c}</style></head><body><h1>Прорабка — финансовый отчёт</h1><p>Период: ${esc(from||'все даты')} — ${esc(to||'все даты')} · Объект: ${esc(oid?objName(oid):'Все объекты')}</p><h2>Итоги</h2>${report}<h2>Данные по объектам</h2>${objects}<script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
 });
-document.getElementById('exportBtn').addEventListener('click',()=>{try{ProrabkaStorage.validate(db)}catch(error){document.getElementById('backupStatus').textContent='Копия требует сверки: '+error.message;storageNotice('Исходная база сохранена без изменений. Скачайте исходные данные для сверки. '+error.message);return}const blob=new Blob([JSON.stringify({...db,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='prorabka-backup-'+today()+'.json';a.click();URL.revokeObjectURL(a.href);document.getElementById('backupStatus').textContent='Резервная копия подготовлена.'});
+function downloadJsonText(raw,filename){
+ // Blob encodes text as UTF-8 and would silently replace lone UTF-16
+ // surrogates. Refuse that lossy download rather than alter the source.
+ for(let i=0;i<raw.length;i++){
+  const unit=raw.charCodeAt(i);
+  if(unit>=0xD800&&unit<=0xDBFF){const next=raw.charCodeAt(++i);if(next>=0xDC00&&next<=0xDFFF)continue;throw Error('Исходный текст содержит непарный UTF-16 символ; точная UTF-8 выгрузка невозможна.')}
+  if(unit>=0xDC00&&unit<=0xDFFF)throw Error('Исходный текст содержит непарный UTF-16 символ; точная UTF-8 выгрузка невозможна.');
+ }
+ const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');
+ try{a.href=url;a.download=filename;document.body.appendChild(a);a.click()}
+ finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
+}
+document.getElementById('exportBtn').addEventListener('click',()=>{
+ const status=document.getElementById('backupStatus');status.textContent='Подготовка JSON сохранённой базы…';
+ try{const raw=persistence.prepareJsonExport();downloadJsonText(raw,'prorabka-backup-'+today()+'.json');status.textContent='JSON сохранённой базы подготовлен к скачиванию. Несохранённые правки не включены. Сохранение файла на устройстве и полнота резервной копии не проверены.'}
+ catch(error){status.textContent='JSON не подготовлен: '+error.message;storageNotice('Экспорт не выполнен. Исходные данные не изменены. '+error.message)}
+});
 function setupDiagnostics(){
  const panel=document.createElement('section');panel.className='panel';panel.id='diagnosticsPanel';
  const title=document.createElement('h2');title.textContent='Диагностика данных';
