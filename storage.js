@@ -77,6 +77,18 @@ function create(storage,key,empty){
   capabilities:()=>capabilities,
   readPreviousBackup:()=>storage.getItem(key+'_before_import'),
   readRaw:()=>storage.getItem(key),
+  prepareJsonExport(){
+   // Export only the saved source. Never serialize the UI or the normalized
+   // fallback snapshot, and never accept foreign bytes as confirmed state.
+   if(blocked)throw Error('Загрузка базы заблокирована. Доступна только непроверенная выгрузка исходного JSON.');
+   if(conflict)throw Error('Обнаружен конфликт данных. Перезагрузите базу после сохранения черновиков отдельно.');
+   const source=storage.getItem(key);
+   if(source!==raw)throw Error('Сохранённая база изменилась. Перезагрузите её перед экспортом.');
+   if(source===null)throw Error('Сохранённая база отсутствует. Пустое состояние экрана не экспортируется вместо неё.');
+   validate(JSON.parse(source));
+   if(storage.getItem(key)!==source)throw Error('Источник изменился во время подготовки JSON. Повторите экспорт после перезагрузки.');
+   return source;
+  },
   status:()=>({blocked,conflict,error,raw}),
   observe(event){if(event.key===key||event.key===null){if(event.newValue!==raw){conflict=true;return true}}return false},
   commit(candidate,{importing=false}={}){
