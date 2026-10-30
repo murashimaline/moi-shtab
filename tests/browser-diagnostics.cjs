@@ -84,6 +84,24 @@ const fixture=()=>({version:3,_revision:{number:12,token:'unchanged'},objects:[{
    assert.doesNotMatch(text,/Отрицательный расчётный остаток/);assert.doesNotMatch(text,/Возможен отрицательный промежуточный остаток/);
    assert.match(await p.locator('#diagnosticsDirections').innerText(),/Остатки/);
   });
+ const precise=fixture();precise.warehouse=[{id:'material',objectId:'o',baseQty:10,unit:'кг'},{id:'piece',objectId:'o',baseQty:10,unit:'шт.'}];
+ precise.warehouseMovements=[
+  {id:'tiny',itemId:'material',date:'2026-01-10',kind:'restock',qty:'TINY'},
+  {id:'fraction',itemId:'piece',date:'2026-01-10',kind:'restock',qty:'FRACTION'}
+ ];
+ const preciseRaw=JSON.stringify(precise).replace('"TINY"','1e-400').replace('"FRACTION"','1.0000000000000001');
+ await scenario('raw underflow stays positive and raw fractional pieces are detected without writes',preciseRaw,async p=>{
+  const text=await p.locator('#diagnosticsResults').innerText();
+  assert.doesNotMatch(text,/Количество движения отсутствует или недопустимо/);
+  assert.match(text,/Дробное количество штучного инструмента/);
+ });
+ const limitedRaw=preciseRaw.replace('1e-400','1e-4097');
+ await scenario('unsupported quantity precision renders partial without an invalid-quantity error',limitedRaw,async p=>{
+  const text=await p.locator('#diagnosticsResults').innerText();
+  assert.doesNotMatch(text,/Количество движения отсутствует или недопустимо/);
+  assert.match(text,/Точная десятичная проверка количества недоступна/);
+  assert.match(await p.locator('#diagnosticsDirections').innerText(),/Частично/);
+ });
  const missingMoves=fixture();missingMoves.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
  await scenario('unavailable directions explain missing data without claiming no problems',JSON.stringify(missingMoves),async p=>{
   const coverage=await p.locator('#diagnosticsDirections').innerText();

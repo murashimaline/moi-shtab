@@ -268,6 +268,72 @@ test('B0-05/08 preserves raw numeric lexemes and reports unsupported precision e
  ];
  const r=check(d);for(const code of ['negative_warehouse_balance','possible_warehouse_intermediate_negative_balance','warehouse_quantity_precision_limit'])assert.equal(has(r,code),false,code);
 });
+const quantityRaw=(qty,unit='кг',base='10')=>{
+ const d=fixture();d.warehouse=[{id:'material',name:'Material',objectId:'o',baseQty:'BASE',unit}];
+ d.warehouseMovements=[{id:'move',itemId:'material',date:'2026-01-10',kind:'restock',qty:'QTY'}];
+ return JSON.stringify(d).replace('"BASE"',base).replace('"QTY"',qty);
+};
+test('B0-05/10 accepts raw and string positive underflow quantities without a false zero error',()=>{
+ for(const qty of ['1e-400','"1e-400"']){
+  const raw=quantityRaw(qty),r=diagnoseRaw(raw);
+  assert.equal(has(r,'invalid_warehouse_movement_quantity'),false);
+  assert.equal(has(r,'warehouse_quantity_precision_limit'),false);
+  assert.equal(direction(r,'warehouse_movements').status,'checked');
+  const backing=disk(raw),store=createDataStore(backing,KEY,fixture);
+  const state=store.status(),snapshot=store.readSnapshot(),entries=[...backing.values];
+  diagnoseRaw(store.readRaw());
+  assert.deepEqual(backing.writes,[]);assert.deepEqual([...backing.values],entries);
+  assert.deepEqual(store.status(),state);assert.deepEqual(store.readSnapshot(),snapshot);
+ }
+});
+test('B0-05/10 detects genuine zero and negative quantities including negative underflow',()=>{
+ for(const qty of ['0','-0','0e-400','-1e-400','"-1e-400"','-1']){
+  assert.ok(has(diagnoseRaw(quantityRaw(qty)),'invalid_warehouse_movement_quantity'),qty);
+ }
+ assert.ok(has(diagnoseRaw(quantityRaw('1','кг','-1e-400')),'invalid_number'));
+ assert.equal(has(diagnoseRaw(quantityRaw('1','кг','0')),'invalid_number'),false,'zero opening balance is allowed');
+});
+test('B0-05/10 detects fractional discrete quantities before Number rounding for bases and movements',()=>{
+ for(const qty of ['1.0000000000000001','"1.0000000000000001"','1e-400']){
+  const r=diagnoseRaw(quantityRaw(qty,'шт.'));
+  assert.ok(has(r,'fractional_stock_quantity'),qty);
+  assert.equal(direction(r,'warehouse_balances').status,'partial');
+ }
+ const r=diagnoseRaw(quantityRaw('1','шт.','1.0000000000000001'));
+ assert.ok(r.issues.some(i=>i.code==='fractional_stock_quantity'&&i.field==='baseQty'));
+});
+test('B0-05/10 accepts mathematically whole representations and fractional materials',()=>{
+ for(const qty of ['1','1.0','1e0','10e-1','"+1.000"','10000000000000001']){
+  const r=diagnoseRaw(quantityRaw(qty,'шт.'));
+  assert.equal(has(r,'fractional_stock_quantity'),false,qty);
+  assert.equal(has(r,'warehouse_quantity_precision_limit'),false,qty);
+ }
+ assert.equal(has(diagnoseRaw(quantityRaw('1.0000000000000001')),'fractional_stock_quantity'),false);
+});
+test('B0-05/10 marks uncheckable quantity precision partial without a false invalid-quantity error',()=>{
+ for(const qty of ['1e-4097','"1e-4097"','"0x10"','"0.'+'0'.repeat(4096)+'1"']){
+  const raw=quantityRaw(qty,'шт.'),r=diagnoseRaw(raw);
+  assert.ok(has(r,'warehouse_quantity_precision_limit'),qty.slice(0,20));
+  assert.equal(has(r,'invalid_warehouse_movement_quantity'),false);
+  assert.equal(has(r,'fractional_stock_quantity'),false);
+  assert.equal(direction(r,'warehouse_movements').status,'partial');
+  assert.equal(direction(r,'warehouse_balances').status,'partial');
+ }
+});
+test('B0-05/10 handles an unavailable exact engine and previously rounded legacy data',()=>{
+ const fs=require('node:fs'),vm=require('node:vm'),context={module:{exports:{}},BigInt:undefined};
+ vm.runInNewContext(fs.readFileSync(require.resolve('../storage.js'),'utf8'),context);
+ const r=context.module.exports.diagnoseRaw(quantityRaw('1','шт.'));
+ assert.ok(has(r,'warehouse_quantity_precision_limit'));
+ assert.equal(has(r,'invalid_warehouse_movement_quantity'),false);
+ assert.equal(direction(r,'warehouse_movements').status,'partial');
+ // A prior parse/serialization has already erased these lexemes; diagnostics
+ // can only assess the saved values and must never invent lost precision.
+ const rounded=JSON.stringify(JSON.parse(quantityRaw('1.0000000000000001','шт.')));
+ assert.equal(has(diagnoseRaw(rounded),'fractional_stock_quantity'),false);
+ const zero=JSON.stringify(JSON.parse(quantityRaw('1e-400')));
+ assert.ok(has(diagnoseRaw(zero),'invalid_warehouse_movement_quantity'));
+});
 test('B0-05 marks warehouse links partial when the optional movement collection is absent',()=>{
  const d=fixture();d.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
  const r=check(d),links=direction(r,'warehouse_links');

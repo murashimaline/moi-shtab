@@ -368,76 +368,14 @@ function diagnoseRaw(raw){
    partial('warehouse_duplicates','Часть записей warehouseMovements не является объектом, поэтому дубли проверены не полностью.');
   }
 
-  for(const e of rows.warehouse){
-   const r=e.row,unit=unitRule(r.unit),hasBase=!missing(r.baseQty)&&number(r.baseQty),baseNumber=hasBase?Number(r.baseQty):null;
-   let baseOK=hasBase,unitOK=true;
-   if(missing(r.baseQty))b05Report('warehouse_balances',e,'missing_warehouse_base_quantity','warehouse','error','baseQty','Начальное количество отсутствует','Расчётный остаток нельзя определить без warehouse.baseQty.');
-   else if(!number(r.baseQty))countProblem('warehouse_balances');
-   if(unit==='discrete'&&hasBase&&!Number.isInteger(baseNumber)){
-    b05Report('warehouse_balances',e,'fractional_stock_quantity','warehouse','error','baseQty','Дробное количество штучного инструмента','Для распознанной штучной единицы измерения количество должно быть целым.');baseOK=false;unitOK=false;
-   }
-   if(unit==='unknown'){
-    b05Report('warehouse_balances',e,'unknown_warehouse_unit','warehouse','info','unit','Единица измерения не определена','Нельзя достоверно решить, допустимо ли дробное количество; исходное значение не изменено.');
-    partial('warehouse_balances','Для части записей единица измерения не распознана, поэтому правило дробных количеств применено не полностью.');
-   }
-   if(missing(r.objectId)){b05Report('warehouse_links',e,'missing_warehouse_object_link','warehouse','error','objectId','Отсутствует ссылка на объект','Карточка инструмента должна содержать явный objectId; по названию объекта ссылка не восстанавливается.');partial('warehouse_links','Часть карточек не содержит явной ссылки на объект.');}
-   else if(!uniqueEntry('objects',r.objectId)){countProblem('warehouse_links');partial('warehouse_links','Часть ссылок на объект нельзя однозначно разрешить.');}
-   if(!missing(r.serial)&&typeof r.serial!=='string'){
-    b05Report('warehouse_serials',e,'invalid_warehouse_serial','warehouse','error','serial','Инвентарный номер имеет неверный формат','Для сравнения нужен текстовый инвентарный номер.');
-    partial('warehouse_serials','Часть инвентарных номеров имеет неверный формат.');
-   }else if(typeof r.serial==='string'&&r.serial.trim()){
-    const key=r.serial.trim().toLocaleLowerCase('ru-RU'),group=serialGroups.get(key)||[];group.push(e);serialGroups.set(key,group);
-   }
-   if(idOK(r.id)&&uniqueEntry('warehouse',r.id))itemFacts.set(r.id,{entry:e,unit,baseOK,unitOK,base:Number(r.baseQty)});
-  }
-
-  for(const e of rows.warehouseMovements){
-   const r=e.row,dateOK=validDate(r.date),kindOK=knownMovementKinds.includes(r.kind),qtyOK=number(r.qty)&&Number(r.qty)>0;
-   const itemOK=uniqueEntry('warehouse',r.itemId),item=itemOK?itemFacts.get(r.itemId):undefined;
-   let unitOK=true;
-   if(!dateOK)countProblem('warehouse_movements');
-   if(!kindOK)b05Report('warehouse_movements',e,'invalid_warehouse_movement_kind','warehouse','error','kind','Неизвестный вид складской операции','Допустимы выдача, возврат, пополнение или списание; запись не изменена.');
-   if(!qtyOK)b05Report('warehouse_movements',e,'invalid_warehouse_movement_quantity','warehouse','error','qty','Количество движения отсутствует или недопустимо','Для движения нужно положительное конечное количество.');
-   if(!itemOK){
-    countProblem('warehouse_links');partial('warehouse_balances','Часть движений нельзя связать с единственной карточкой инструмента, поэтому остатки рассчитаны не полностью.');
-    partial('warehouse_duplicates','Часть движений нельзя сопоставить с инструментом, поэтому дубли проверены не полностью.');
-   }
-   if(item&&item.unit==='discrete'&&qtyOK&&!Number.isInteger(Number(r.qty))){
-    b05Report('warehouse_movements',e,'fractional_stock_quantity','warehouse','error','qty','Дробное количество штучного инструмента','Для распознанной штучной единицы измерения количество движения должно быть целым.');unitOK=false;
-   }
-   if(item&&item.unit==='unknown'&&qtyOK&&!Number.isInteger(Number(r.qty)))partial('warehouse_movements','Для части движений единица измерения не распознана, поэтому правило дробных количеств применено не полностью.');
-   if(itemOK){const list=movementByItem.get(r.itemId)||[];list.push({entry:e,dateOK,kindOK,qtyOK,unitOK});movementByItem.set(r.itemId,list)}
-   const assignee=textPart(r.assignee),notes=textPart(r.notes);
-   if(itemOK&&dateOK&&kindOK&&qtyOK&&assignee!==null&&notes!==null){
-    const key=JSON.stringify([r.itemId,r.date,r.kind,Number(r.qty),assignee,notes]),group=movementGroups.get(key)||[];group.push(e);movementGroups.set(key,group);
-   }else if(assignee===null||notes===null)partial('warehouse_duplicates','Часть текстовых реквизитов движения имеет неверный формат, поэтому дубли проверены не полностью.');
-  }
-  for(const [entries,fields] of [[rows.warehouse,[['workerId','workers'],['itemId','warehouse']]],[rows.warehouseMovements,[['objectId','objects'],['workerId','workers']]]])for(const e of entries)for(const [field,target] of fields)if(!missing(e.row[field])&&!uniqueEntry(target,e.row[field]))countProblem('warehouse_links');
-
-  const relatedEntries=(group,current)=>{
-   const related=[];
-   for(const other of group){if(other!==current)related.push(other);if(related.length===10)break;}
-   return related;
-  };
-  for(const group of serialGroups.values())if(group.length>1)for(const e of group)
-   b05Report('warehouse_serials',e,'possible_duplicate_serial','warehouse','warning','serial','Возможное совпадение инвентарного номера','Номера совпадают без учёта регистра и пробелов по краям. Сверьте связанные карточки вручную.',relatedEntries(group,e));
-  for(const group of movementGroups.values())if(group.length>1)for(const e of group)
-   b05Report('warehouse_duplicates',e,'possible_duplicate_warehouse_movement','warehouse','warning','','Возможный дубль движения','Совпадают инструмент, дата, вид, количество, получатель и примечание. Это кандидат для ручной сверки; записи не объединены.',relatedEntries(group,e));
-
-  const reportQuantityOverflow=(item,related=[])=>{
-   b05Report('warehouse_balances',item.entry,'warehouse_quantity_overflow','warehouse','error','baseQty','Расчёт количества выходит за пределы конечного числа','Промежуточный или итоговый остаток невозможно определить достоверно; ошибочное значение не заменяется нулём.',related);
-   countProblem('warehouse_chronology');
-   partial('warehouse_balances','Для части карточек расчёт количества выходит за пределы конечного числа.');
-   partial('warehouse_chronology','Для части карточек междневный расчёт выходит за пределы конечного числа.');
-  };
    // Number is retained as an overflow guard, but it is not reliable for a sign
    // comparison of fractional quantities (for example, 0.3 - 0.1 - 0.2). Keep a
    // finite decimal coefficient and its base-10 scale for that comparison instead.
    // Preserve JSON number lexemes before JSON.parse can round them. Quoted JSON
    // strings are matched first and left intact; only unquoted numbers are quoted
-   // in this private read-only copy. Validation still uses the original data.
-   const quantitySources=warehouseState==='available'&&movementState==='available'?JSON.parse(raw.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g,token=>token[0]==='"'?token:JSON.stringify(token))):null;
-   const sourceQuantity=(entry,field)=>quantitySources[entry.collection][entry.index][field];
+   // in this private read-only copy. Structural validation uses the original data.
+   const quantitySources=JSON.parse(raw.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g,token=>token[0]==='"'?token:JSON.stringify(token)));
+   const sourceQuantity=(entry,field)=>quantitySources?.[entry.collection]?.[entry.index]?.[field];
    const exactDecimalLimit=4096,decimalBigIntAvailable=typeof BigInt==='function',decimalZero=decimalBigIntAvailable?BigInt(0):null,decimalOne=decimalBigIntAvailable?BigInt(1):null,decimalTen=decimalBigIntAvailable?BigInt(10):null,decimalPowers=new Map(decimalBigIntAvailable?[[0,decimalOne]]:[]);
    const decimalPower=power=>{
     if(!decimalBigIntAvailable||!Number.isSafeInteger(power)||power<0||power>exactDecimalLimit)return null;
@@ -481,7 +419,83 @@ function diagnoseRaw(raw){
     countProblem('warehouse_chronology');
     partial('warehouse_balances','Для части карточек точное сравнение количеств недоступно.');
     partial('warehouse_chronology','Для части карточек точное междневное сравнение количеств недоступно.');
+    if(field==='qty'){
+     countProblem('warehouse_movements');
+     partial('warehouse_movements','Для части движений точная проверка знака или целочисленности количества недоступна.');
+    }
    };
+   const quantityFacts=(entry,field,positive)=>{
+    const value=entry.row[field];
+    if(missing(value)||!['number','string'].includes(typeof value)||!Number.isFinite(Number(value)))return {valid:false,limited:false};
+    const exact=exactDecimal(sourceQuantity(entry,field));
+    if(!exact)return {valid:false,limited:true};
+    return {valid:positive?exact.coefficient>decimalZero:exact.coefficient>=decimalZero,limited:false,integer:exact.coefficient%decimalPower(exact.scale)===decimalZero};
+   };
+  for(const e of rows.warehouse){
+   const r=e.row,unit=unitRule(r.unit),quantity=quantityFacts(e,'baseQty',false),hasBase=quantity.valid;
+   let baseOK=hasBase,unitOK=true;
+   if(missing(r.baseQty))b05Report('warehouse_balances',e,'missing_warehouse_base_quantity','warehouse','error','baseQty','Начальное количество отсутствует','Расчётный остаток нельзя определить без warehouse.baseQty.');
+   else if(quantity.limited)reportQuantityPrecisionLimit({entry:e});
+   else if(!number(r.baseQty))countProblem('warehouse_balances');
+   else if(!hasBase)b05Report('warehouse_balances',e,'invalid_number','values','error','baseQty','Некорректное числовое значение','Начальное количество должно быть неотрицательным по исходной десятичной записи.');
+   if(unit==='discrete'&&hasBase&&!quantity.integer){
+    b05Report('warehouse_balances',e,'fractional_stock_quantity','warehouse','error','baseQty','Дробное количество штучного инструмента','Для распознанной штучной единицы измерения количество должно быть целым.');baseOK=false;unitOK=false;
+   }
+   if(unit==='unknown'){
+    b05Report('warehouse_balances',e,'unknown_warehouse_unit','warehouse','info','unit','Единица измерения не определена','Нельзя достоверно решить, допустимо ли дробное количество; исходное значение не изменено.');
+    partial('warehouse_balances','Для части записей единица измерения не распознана, поэтому правило дробных количеств применено не полностью.');
+   }
+   if(missing(r.objectId)){b05Report('warehouse_links',e,'missing_warehouse_object_link','warehouse','error','objectId','Отсутствует ссылка на объект','Карточка инструмента должна содержать явный objectId; по названию объекта ссылка не восстанавливается.');partial('warehouse_links','Часть карточек не содержит явной ссылки на объект.');}
+   else if(!uniqueEntry('objects',r.objectId)){countProblem('warehouse_links');partial('warehouse_links','Часть ссылок на объект нельзя однозначно разрешить.');}
+   if(!missing(r.serial)&&typeof r.serial!=='string'){
+    b05Report('warehouse_serials',e,'invalid_warehouse_serial','warehouse','error','serial','Инвентарный номер имеет неверный формат','Для сравнения нужен текстовый инвентарный номер.');
+    partial('warehouse_serials','Часть инвентарных номеров имеет неверный формат.');
+   }else if(typeof r.serial==='string'&&r.serial.trim()){
+    const key=r.serial.trim().toLocaleLowerCase('ru-RU'),group=serialGroups.get(key)||[];group.push(e);serialGroups.set(key,group);
+   }
+   if(idOK(r.id)&&uniqueEntry('warehouse',r.id))itemFacts.set(r.id,{entry:e,unit,baseOK,unitOK,base:Number(r.baseQty)});
+  }
+
+  for(const e of rows.warehouseMovements){
+   const r=e.row,dateOK=validDate(r.date),kindOK=knownMovementKinds.includes(r.kind),quantity=quantityFacts(e,'qty',true),qtyOK=quantity.valid;
+   const itemOK=uniqueEntry('warehouse',r.itemId),item=itemOK?itemFacts.get(r.itemId):undefined;
+   let unitOK=true;
+   if(!dateOK)countProblem('warehouse_movements');
+   if(!kindOK)b05Report('warehouse_movements',e,'invalid_warehouse_movement_kind','warehouse','error','kind','Неизвестный вид складской операции','Допустимы выдача, возврат, пополнение или списание; запись не изменена.');
+   if(quantity.limited)reportQuantityPrecisionLimit(item||{entry:e},e,'qty');
+   else if(!qtyOK)b05Report('warehouse_movements',e,'invalid_warehouse_movement_quantity','warehouse','error','qty','Количество движения отсутствует или недопустимо','Для движения нужно положительное конечное количество по исходной десятичной записи.');
+   if(!itemOK){
+    countProblem('warehouse_links');partial('warehouse_balances','Часть движений нельзя связать с единственной карточкой инструмента, поэтому остатки рассчитаны не полностью.');
+    partial('warehouse_duplicates','Часть движений нельзя сопоставить с инструментом, поэтому дубли проверены не полностью.');
+   }
+   if(item&&item.unit==='discrete'&&qtyOK&&!quantity.integer){
+    b05Report('warehouse_movements',e,'fractional_stock_quantity','warehouse','error','qty','Дробное количество штучного инструмента','Для распознанной штучной единицы измерения количество движения должно быть целым.');unitOK=false;
+   }
+   if(item&&item.unit==='unknown'&&qtyOK&&!quantity.integer)partial('warehouse_movements','Для части движений единица измерения не распознана, поэтому правило дробных количеств применено не полностью.');
+   if(itemOK){const list=movementByItem.get(r.itemId)||[];list.push({entry:e,dateOK,kindOK,qtyOK,unitOK});movementByItem.set(r.itemId,list)}
+   const assignee=textPart(r.assignee),notes=textPart(r.notes);
+   if(itemOK&&dateOK&&kindOK&&qtyOK&&assignee!==null&&notes!==null){
+    const key=JSON.stringify([r.itemId,r.date,r.kind,Number(r.qty),assignee,notes]),group=movementGroups.get(key)||[];group.push(e);movementGroups.set(key,group);
+   }else if(assignee===null||notes===null)partial('warehouse_duplicates','Часть текстовых реквизитов движения имеет неверный формат, поэтому дубли проверены не полностью.');
+  }
+  for(const [entries,fields] of [[rows.warehouse,[['workerId','workers'],['itemId','warehouse']]],[rows.warehouseMovements,[['objectId','objects'],['workerId','workers']]]])for(const e of entries)for(const [field,target] of fields)if(!missing(e.row[field])&&!uniqueEntry(target,e.row[field]))countProblem('warehouse_links');
+
+  const relatedEntries=(group,current)=>{
+   const related=[];
+   for(const other of group){if(other!==current)related.push(other);if(related.length===10)break;}
+   return related;
+  };
+  for(const group of serialGroups.values())if(group.length>1)for(const e of group)
+   b05Report('warehouse_serials',e,'possible_duplicate_serial','warehouse','warning','serial','Возможное совпадение инвентарного номера','Номера совпадают без учёта регистра и пробелов по краям. Сверьте связанные карточки вручную.',relatedEntries(group,e));
+  for(const group of movementGroups.values())if(group.length>1)for(const e of group)
+   b05Report('warehouse_duplicates',e,'possible_duplicate_warehouse_movement','warehouse','warning','','Возможный дубль движения','Совпадают инструмент, дата, вид, количество, получатель и примечание. Это кандидат для ручной сверки; записи не объединены.',relatedEntries(group,e));
+
+  const reportQuantityOverflow=(item,related=[])=>{
+   b05Report('warehouse_balances',item.entry,'warehouse_quantity_overflow','warehouse','error','baseQty','Расчёт количества выходит за пределы конечного числа','Промежуточный или итоговый остаток невозможно определить достоверно; ошибочное значение не заменяется нулём.',related);
+   countProblem('warehouse_chronology');
+   partial('warehouse_balances','Для части карточек расчёт количества выходит за пределы конечного числа.');
+   partial('warehouse_chronology','Для части карточек междневный расчёт выходит за пределы конечного числа.');
+  };
   if(warehouseState==='available'&&movementState==='available')for(const [id,item] of itemFacts){
    const movements=movementByItem.get(id)||[];
    if(!item.baseOK||!item.unitOK||movements.some(m=>!m.kindOK||!m.qtyOK||!m.unitOK)){
