@@ -74,6 +74,16 @@ const fixture=()=>({version:3,_revision:{number:12,token:'unchanged'},objects:[{
   const text=await p.locator('#diagnosticsResults').innerText();assert.match(text,/Склад/);assert.match(text,/Вложения/);assert.match(text,/Возможный дубль/);
   assert.equal(await p.locator('#diagnosticsResults img').count(),0);assert.equal(await p.evaluate(()=>window.injected),undefined);
  });
+  const fractional=fixture();fractional.warehouse=[{id:'cement',name:'Cement',objectId:'o',baseQty:0.3,unit:'кг'}];
+  fractional.warehouseMovements=[
+   {id:'issue-one',itemId:'cement',date:'2026-01-10',kind:'issue',qty:0.1,assignee:'',notes:''},
+   {id:'issue-two',itemId:'cement',date:'2026-01-11',kind:'issue',qty:0.2,assignee:'',notes:''}
+  ];
+  await scenario('exact fractional warehouse calculation renders without a false deficit and stays read-only',JSON.stringify(fractional),async p=>{
+   const text=await p.locator('#diagnosticsResults').innerText();
+   assert.doesNotMatch(text,/Отрицательный расчётный остаток/);assert.doesNotMatch(text,/Возможен отрицательный промежуточный остаток/);
+   assert.match(await p.locator('#diagnosticsDirections').innerText(),/Остатки/);
+  });
  const missingMoves=fixture();missingMoves.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
  await scenario('unavailable directions explain missing data without claiming no problems',JSON.stringify(missingMoves),async p=>{
   const coverage=await p.locator('#diagnosticsDirections').innerText();

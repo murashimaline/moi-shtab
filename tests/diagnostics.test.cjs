@@ -201,13 +201,80 @@ test('B0-05 treats a distinct-date intermediate deficit as a candidate and never
  ];
  assert.equal(count(check(sameDate),'possible_warehouse_intermediate_negative_balance'),0,'one date has no provable operation order');
 });
+test('B0-05/08 treats decimal source quantities exactly and keeps the raw fixture unchanged',()=>{
+ const exact=fixture();exact.warehouse=[{id:'cement',name:'Cement',objectId:'o',baseQty:0.3,unit:'кг'}];
+ exact.warehouseMovements=[
+  {id:'issue-one',itemId:'cement',date:'2026-01-10',kind:'issue',qty:0.1,assignee:'',notes:''},
+  {id:'issue-two',itemId:'cement',date:'2026-01-11',kind:'issue',qty:0.2,assignee:'',notes:''}
+ ];
+ const before=JSON.stringify(exact),r=check(exact);
+ assert.equal(has(r,'negative_warehouse_balance'),false,'0.3 − 0.1 − 0.2 is exactly zero in the JSON quantities');
+ assert.equal(count(r,'possible_warehouse_intermediate_negative_balance'),0,'daily totals with exact fractional quantities must not create a false candidate');
+ assert.equal(has(r,'warehouse_quantity_overflow'),false);assert.equal(JSON.stringify(exact),before);
+});
+test('B0-05/08 preserves detection of a genuinely tiny fractional deficit',()=>{
+ const d=fixture();d.warehouse=[{id:'cement',name:'Cement',objectId:'o',baseQty:0.3,unit:'кг'}];
+ d.warehouseMovements=[
+  {id:'issue-one',itemId:'cement',date:'2026-01-10',kind:'issue',qty:0.1,assignee:'',notes:''},
+  {id:'issue-two',itemId:'cement',date:'2026-01-10',kind:'issue',qty:0.20000000000000004,assignee:'',notes:''}
+ ];
+ const before=JSON.stringify(d),r=check(d);
+ assert.equal(count(r,'negative_warehouse_balance'),1,'a real decimal deficit must not disappear behind an arbitrary tolerance');
+ assert.equal(has(r,'warehouse_quantity_overflow'),false);assert.equal(JSON.stringify(d),before);
+});
+test('B0-05/08 applies exact fractional daily totals to chronology without ordering one date',()=>{
+ const distinctDates=fixture();distinctDates.warehouse=[{id:'cement',name:'Cement',objectId:'o',baseQty:0.3,unit:'кг'}];
+ distinctDates.warehouseMovements=[
+  {id:'issue',itemId:'cement',date:'2026-01-10',kind:'issue',qty:0.4,assignee:'',notes:''},
+  {id:'restock',itemId:'cement',date:'2026-01-11',kind:'restock',qty:0.1,assignee:'',notes:''}
+ ];
+ const distinct=check(distinctDates);
+ assert.equal(count(distinct,'possible_warehouse_intermediate_negative_balance'),1,'a fractional deficit after a completed earlier day remains a manual-review candidate');
+ assert.equal(has(distinct,'negative_warehouse_balance'),false,'the later fractional replenishment restores the final total');
+ const sameDate=fixture();sameDate.warehouse=[{id:'cement',name:'Cement',objectId:'o',baseQty:0.3,unit:'кг'}];
+ sameDate.warehouseMovements=[
+  {id:'issue',itemId:'cement',date:'2026-01-10',kind:'issue',qty:0.4,assignee:'',notes:''},
+  {id:'restock',itemId:'cement',date:'2026-01-10',kind:'restock',qty:0.1,assignee:'',notes:''}
+ ];
+ const before=JSON.stringify(sameDate),same=check(sameDate);
+ assert.equal(count(same,'possible_warehouse_intermediate_negative_balance'),0,'operations sharing a date still have no invented order');
+ assert.equal(has(same,'negative_warehouse_balance'),false);assert.equal(JSON.stringify(sameDate),before);
+});
+test('B0-05/08 accepts finite extreme decimal quantities without treating scale as overflow',()=>{
+ const d=fixture();d.warehouse=[{id:'material',name:'Material',objectId:'o',baseQty:Number.MAX_VALUE,unit:'кг'}];
+ d.warehouseMovements=[
+  {id:'tiny-issue',itemId:'material',date:'2026-01-10',kind:'issue',qty:Number.MIN_VALUE,assignee:'',notes:''},
+  {id:'tiny-restock',itemId:'material',date:'2026-01-11',kind:'restock',qty:Number.MIN_VALUE,assignee:'',notes:''}
+ ];
+ const before=JSON.stringify(d),r=check(d);
+ for(const code of ['warehouse_quantity_overflow','negative_warehouse_balance','possible_warehouse_intermediate_negative_balance'])assert.equal(has(r,code),false,code);
+ assert.equal(JSON.stringify(d),before);
+});
+test('B0-05/08 preserves raw numeric lexemes and reports unsupported precision explicitly',()=>{
+ const d=fixture();d.warehouse=[{id:'material',objectId:'o',baseQty:'BASE',unit:'кг'}];
+ d.warehouseMovements=[{id:'issue',itemId:'material',date:'2026-01-10',kind:'issue',qty:'QTY',notes:'escaped " 123 \\ 456'}];
+ const raw=JSON.stringify(d).replace('"BASE"','0.3').replace('"QTY"','0.30000000000000000001');
+ assert.equal(count(diagnoseRaw(raw),'negative_warehouse_balance'),1,'JSON.parse rounding must not erase the raw deficit');
+ for(const base of ['0x10','1e-4097','0.'+'0'.repeat(4096)+'1']){
+  d.warehouse[0].baseQty=base;d.warehouseMovements=[];
+  const before=JSON.stringify(d),r=diagnoseRaw(before);
+  assert.ok(has(r,'warehouse_quantity_precision_limit'));
+  assert.equal(direction(r,'warehouse_balances').status,'partial');
+  assert.equal(has(r,'negative_warehouse_balance'),false);assert.equal(JSON.stringify(d),before);
+ }
+ d.warehouse[0].baseQty='3e-300';d.warehouseMovements=[
+  {id:'one',itemId:'material',date:'2026-01-10',kind:'issue',qty:'1e-300'},
+  {id:'two',itemId:'material',date:'2026-01-11',kind:'issue',qty:'2e-300'}
+ ];
+ const r=check(d);for(const code of ['negative_warehouse_balance','possible_warehouse_intermediate_negative_balance','warehouse_quantity_precision_limit'])assert.equal(has(r,code),false,code);
+});
 test('B0-05 marks warehouse links partial when the optional movement collection is absent',()=>{
  const d=fixture();d.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:1,unit:'шт.'}];
  const r=check(d),links=direction(r,'warehouse_links');
  assert.equal(links.status,'partial');assert.match(links.reason,/warehouseMovements|движени/i);
  assert.equal(r.complete,true,'optional collections stay absent in raw JSON without redefining B0-04 completeness');
 });
-test('B0-05 detects non-finite warehouse arithmetic without replacing it with zero',()=>{
+test('B0-05/06–08 detects non-finite warehouse arithmetic without replacing it with zero',()=>{
  const d=fixture();d.warehouse=[{id:'tool',name:'Tool',objectId:'o',baseQty:Number.MAX_VALUE,unit:'шт.'}];
  d.warehouseMovements=[{id:'restock',itemId:'tool',date:'2026-01-10',kind:'restock',qty:Number.MAX_VALUE,assignee:'',notes:''}];
  const before=JSON.stringify(d),r=check(d);

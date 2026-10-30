@@ -430,6 +430,58 @@ function diagnoseRaw(raw){
    partial('warehouse_balances','Для части карточек расчёт количества выходит за пределы конечного числа.');
    partial('warehouse_chronology','Для части карточек междневный расчёт выходит за пределы конечного числа.');
   };
+   // Number is retained as an overflow guard, but it is not reliable for a sign
+   // comparison of fractional quantities (for example, 0.3 - 0.1 - 0.2). Keep a
+   // finite decimal coefficient and its base-10 scale for that comparison instead.
+   // Preserve JSON number lexemes before JSON.parse can round them. Quoted JSON
+   // strings are matched first and left intact; only unquoted numbers are quoted
+   // in this private read-only copy. Validation still uses the original data.
+   const quantitySources=warehouseState==='available'&&movementState==='available'?JSON.parse(raw.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g,token=>token[0]==='"'?token:JSON.stringify(token))):null;
+   const sourceQuantity=(entry,field)=>quantitySources[entry.collection][entry.index][field];
+   const exactDecimalLimit=4096,decimalBigIntAvailable=typeof BigInt==='function',decimalZero=decimalBigIntAvailable?BigInt(0):null,decimalOne=decimalBigIntAvailable?BigInt(1):null,decimalTen=decimalBigIntAvailable?BigInt(10):null,decimalPowers=new Map(decimalBigIntAvailable?[[0,decimalOne]]:[]);
+   const decimalPower=power=>{
+    if(!decimalBigIntAvailable||!Number.isSafeInteger(power)||power<0||power>exactDecimalLimit)return null;
+    if(!decimalPowers.has(power))decimalPowers.set(power,decimalTen**BigInt(power));
+    return decimalPowers.get(power);
+   };
+   const exactDecimal=value=>{
+    if(!decimalBigIntAvailable)return null;
+    const source=typeof value==='string'?value.trim():typeof value==='number'?String(value):'';
+    if(source.length>exactDecimalLimit)return null;
+    const match=/^([+-]?)(?:(\d+)(?:\.(\d*))?|\.(\d+))(?:[eE]([+-]?\d+))?$/.exec(source);
+    if(!match)return null;
+    const whole=match[2]||'0',fraction=match[4]===undefined?(match[3]||''):match[4],exponent=Number(match[5]||0);
+    if(!Number.isSafeInteger(exponent)||Math.abs(exponent)>exactDecimalLimit)return null;
+    const digits=(whole+fraction).replace(/^0+/,'')||'0',rawScale=fraction.length-exponent;
+    if(digits.length>exactDecimalLimit||Math.abs(rawScale)>exactDecimalLimit)return null;
+    let coefficient;
+    try{coefficient=BigInt(digits)}catch{return null}
+    if(match[1]==='-')coefficient=-coefficient;
+    if(rawScale<0){
+     const multiplier=decimalPower(-rawScale);if(multiplier===null||digits.length-rawScale>exactDecimalLimit)return null;
+     coefficient*=multiplier;
+    }
+    return {coefficient,scale:Math.max(0,rawScale)};
+   };
+   const decimalDigits=coefficient=>(coefficient<decimalZero?-coefficient:coefficient).toString().length;
+   const addExactDecimal=(left,right)=>{
+    const scale=Math.max(left.scale,right.scale),leftShift=scale-left.scale,rightShift=scale-right.scale;
+    if(scale>exactDecimalLimit||decimalDigits(left.coefficient)+leftShift>exactDecimalLimit||decimalDigits(right.coefficient)+rightShift>exactDecimalLimit)return null;
+    const leftPower=decimalPower(leftShift),rightPower=decimalPower(rightShift);
+    if(leftPower===null||rightPower===null)return null;
+    const coefficient=left.coefficient*leftPower+right.coefficient*rightPower;
+    return decimalDigits(coefficient)>exactDecimalLimit?null:{coefficient,scale};
+   };
+   const signedExactMovement=(movement)=>{
+    const quantity=exactDecimal(sourceQuantity(movement.entry,'qty'));if(!quantity)return null;
+    return ['return','restock'].includes(movement.entry.row.kind)?quantity:{coefficient:-quantity.coefficient,scale:quantity.scale};
+   };
+   const reportQuantityPrecisionLimit=(item,entry=item.entry,field='baseQty',related=[])=>{
+    b05Report('warehouse_balances',entry,'warehouse_quantity_precision_limit','warehouse','warning',field,'Точная десятичная проверка количества недоступна','Исходное число нельзя надёжно представить или сложить как конечную десятичную запись в поддерживаемом диапазоне. Результат не подменяется нулём и не считается проверенным.',related);
+    countProblem('warehouse_chronology');
+    partial('warehouse_balances','Для части карточек точное сравнение количеств недоступно.');
+    partial('warehouse_chronology','Для части карточек точное междневное сравнение количеств недоступно.');
+   };
   if(warehouseState==='available'&&movementState==='available')for(const [id,item] of itemFacts){
    const movements=movementByItem.get(id)||[];
    if(!item.baseOK||!item.unitOK||movements.some(m=>!m.kindOK||!m.qtyOK||!m.unitOK)){
@@ -437,15 +489,19 @@ function diagnoseRaw(raw){
     partial('warehouse_chronology','Для части карточек последовательность между датами нельзя определить из-за некорректных исходных количеств или движений.');
     continue;
    }
-   let balance=item.base,calculationOK=Number.isFinite(balance);
+    let numberBalance=item.base,exactBalance=exactDecimal(sourceQuantity(item.entry,'baseQty')),calculationOK=Number.isFinite(numberBalance),exactCalculationOK=!!exactBalance;
+    if(!exactCalculationOK){reportQuantityPrecisionLimit(item);continue}
+    const exactDeltas=new Map();
    for(const movement of movements){
-    const r=movement.entry.row,q=Number(r.qty),delta=['return','restock'].includes(r.kind)?q:-q,next=balance+delta;
+     const r=movement.entry.row,q=Number(r.qty),delta=['return','restock'].includes(r.kind)?q:-q,next=numberBalance+delta;
     if(!Number.isFinite(next)){reportQuantityOverflow(item,movements.map(m=>m.entry).slice(0,10));calculationOK=false;break;}
-    balance=next;
+     const exactDelta=signedExactMovement(movement),exactNext=exactDelta&&addExactDecimal(exactBalance,exactDelta);
+     if(!exactNext){reportQuantityPrecisionLimit(item,movement.entry,'qty',[item.entry,...movements.filter(other=>other!==movement).map(other=>other.entry).slice(0,9)]);exactCalculationOK=false;break;}
+     numberBalance=next;exactBalance=exactNext;exactDeltas.set(movement,exactDelta);
    }
-   if(!calculationOK)continue;
-   if(balance<0)b05Report('warehouse_balances',item.entry,'negative_warehouse_balance','warehouse','error','baseQty','Отрицательный расчётный остаток','Формула использует начальное количество и доступные движения. Порядок операций внутри одной даты не устанавливался.',movements.map(m=>m.entry).slice(0,10));
-   if(item.entry.row.condition==='Списан'&&balance>0)b05Report('warehouse_balances',item.entry,'warehouse_condition_balance_mismatch','warehouse','warning','condition','Статус «Списан» не совпадает с расчётным остатком','Статус карточки сам по себе не уменьшает количество. Проверьте, не отсутствует ли операция списания.',movements.map(m=>m.entry).slice(0,10));
+    if(!calculationOK||!exactCalculationOK)continue;
+    if(exactBalance.coefficient<decimalZero)b05Report('warehouse_balances',item.entry,'negative_warehouse_balance','warehouse','error','baseQty','Отрицательный расчётный остаток','Формула использует начальное количество и доступные движения. Порядок операций внутри одной даты не устанавливался.',movements.map(m=>m.entry).slice(0,10));
+    if(item.entry.row.condition==='Списан'&&exactBalance.coefficient>decimalZero)b05Report('warehouse_balances',item.entry,'warehouse_condition_balance_mismatch','warehouse','warning','condition','Статус карточки сам по себе не уменьшает количество. Проверьте, не отсутствует ли операция списания.',movements.map(m=>m.entry).slice(0,10));
 
    if(movements.some(m=>!m.dateOK)){
     partial('warehouse_chronology','Часть движений имеет некорректную дату, поэтому последовательность между датами проверена не полностью.');
@@ -454,17 +510,21 @@ function diagnoseRaw(raw){
    const days=new Map();let chronologyOK=true;
    for(const movement of movements){
     const r=movement.entry.row,q=Number(r.qty),delta=['return','restock'].includes(r.kind)?q:-q;
-    const day=days.get(r.date)||{delta:0,entries:[]},nextDelta=day.delta+delta;
+     const day=days.get(r.date)||{numberDelta:0,exactDelta:{coefficient:decimalZero,scale:0},entries:[]},nextDelta=day.numberDelta+delta;
     if(!Number.isFinite(nextDelta)){reportQuantityOverflow(item,[movement.entry]);chronologyOK=false;break;}
-    day.delta=nextDelta;day.entries.push(movement.entry);days.set(r.date,day);
+     const exactNextDelta=addExactDecimal(day.exactDelta,exactDeltas.get(movement));
+     if(!exactNextDelta){reportQuantityPrecisionLimit(item,movement.entry,'qty',[item.entry,...day.entries.slice(0,9)]);chronologyOK=false;break;}
+     day.numberDelta=nextDelta;day.exactDelta=exactNextDelta;day.entries.push(movement.entry);days.set(r.date,day);
    }
    if(!chronologyOK||days.size<2)continue;
-   let historicalBalance=item.base;
+    let historicalNumberBalance=item.base,historicalExactBalance=exactDecimal(sourceQuantity(item.entry,'baseQty'));
    for(const [date,day] of [...days.entries()].sort(([a],[b])=>a.localeCompare(b))){
-    const next=historicalBalance+day.delta;
-    if(!Number.isFinite(next)){reportQuantityOverflow(item,[item.entry,...day.entries.filter(entry=>entry!==item.entry).slice(0,9)]);break;}
-    historicalBalance=next;
-    if(historicalBalance<0){
+     const next=historicalNumberBalance+day.numberDelta;
+     if(!Number.isFinite(next)){reportQuantityOverflow(item,[item.entry,...day.entries.filter(entry=>entry!==item.entry).slice(0,9)]);break;}
+     const exactNext=addExactDecimal(historicalExactBalance,day.exactDelta);
+     if(!exactNext){reportQuantityPrecisionLimit(item,item.entry,'baseQty',[...day.entries.slice(0,10)]);break;}
+     historicalNumberBalance=next;historicalExactBalance=exactNext;
+     if(historicalExactBalance.coefficient<decimalZero){
      const record=day.entries[0],related=[item.entry,...relatedEntries(day.entries,record)].slice(0,10);
      b05Report('warehouse_chronology',record,'possible_warehouse_intermediate_negative_balance','warehouse','warning','date','Возможен отрицательный промежуточный остаток','После дневного итога за '+date+' расчётный остаток отрицателен. warehouse.baseQty не имеет даты, поэтому достоверность начального исторического остатка ограничена; операции одной даты не упорядочиваются. Это кандидат для ручной сверки, не доказанная ошибка.',related);
     }
