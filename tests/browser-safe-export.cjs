@@ -60,5 +60,34 @@ const rawFixture=()=>JSON.stringify({...fixture(),unicode:'Русский тек
  await scenario('P2 refuses UTF-8 substitution of a literal lone surrogate without changing source',JSON.stringify({...fixture(),unicode:'PLACEHOLDER'}).replace('PLACEHOLDER','\ud800'),async({p,readonly,rejected})=>{
   await readonly(async()=>{await rejected();assert.match(await p.locator('#backupStatus').innerText(),/точная UTF-8 выгрузка невозможна/)});
  });
+ async function collapseRecoveryPanel(p){
+  await p.locator('#backupToggle').click();assert.equal(await p.locator('#backupDetails').isVisible(),false);assert.equal(await p.locator('#backupStatus').isVisible(),false);
+ }
+ async function visibleRecoveryResult(p,pattern){
+  assert.equal(await p.locator('#backupDetails').isVisible(),true);assert.equal(await p.locator('#backupStatus').isVisible(),true);
+  assert.match(await p.locator('#backupStatus').innerText(),pattern);
+  await p.waitForFunction(()=>{const rect=document.getElementById('backupStatus').getBoundingClientRect();return rect.top>=0&&rect.bottom<=innerHeight});
+ }
+ await scenario('I01 collapsed panel exposes recovery read failure and creates no file',raw,async({p,readonly,rejected})=>{
+  await p.evaluate(KEY=>{Storage.prototype.getItem=function(k){if(k===KEY)throw Error('Read denied');return exportOriginalGet.call(this,k)}},KEY);
+  await rejected();await collapseRecoveryPanel(p);
+  await readonly(async()=>{const urls=await p.evaluate(()=>exportUrlCalls);let downloads=0;p.on('download',()=>downloads++);
+   await p.locator('#downloadRawRecovery').click();await visibleRecoveryResult(p,/^Исходный JSON не подготовлен: Read denied/);
+   assert.equal(await p.evaluate(()=>exportUrlCalls),urls);assert.equal(downloads,0);
+  });
+ });
+ await scenario('I01 collapsed panel exposes missing recovery source and creates no file',raw,async({p,readonly,rejected})=>{
+  await p.evaluate(KEY=>localStorage.removeItem(KEY),KEY);await rejected();await collapseRecoveryPanel(p);
+  await readonly(async()=>{const urls=await p.evaluate(()=>exportUrlCalls);let downloads=0;p.on('download',()=>downloads++);
+   await p.locator('#downloadRawRecovery').click();await visibleRecoveryResult(p,/^Исходный JSON не подготовлен: Сохранённый источник отсутствует/);
+   assert.equal(await p.evaluate(()=>exportUrlCalls),urls);assert.equal(downloads,0);
+  });
+ });
+ await scenario('I01 collapsed panel exposes successful unverified recovery without changing data',raw,async({p,readonly,rejected,download})=>{
+  await p.evaluate(KEY=>persistence.observe({key:KEY,newValue:'simulated foreign notification'}),KEY);await rejected();await collapseRecoveryPanel(p);
+  await readonly(async()=>{const file=await download('#downloadRawRecovery');assert.deepEqual(file.bytes,Buffer.from(raw));assert.equal(file.name,'prorabka-recovery.json');
+   await visibleRecoveryResult(p,/Исходный JSON подготовлен к скачиванию без проверки пригодности к восстановлению\. Это не подтверждённая резервная копия/);
+  });
+ });
  await browser.close();server.close();console.log('Safe JSON export: '+passed+'/'+passed+' PASS');
 })().catch(async error=>{console.error(error);if(browser)await browser.close();if(server)server.close();process.exitCode=1});

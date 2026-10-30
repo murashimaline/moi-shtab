@@ -639,9 +639,11 @@ function storageNotice(message){
  panel.replaceChildren(document.createTextNode(message+' '));
  const reload=document.createElement('button');reload.textContent='Перезагрузить';reload.onclick=()=>location.reload();panel.append(reload);
  const download=document.createElement('button');download.id='downloadRawRecovery';download.textContent='Скачать исходный JSON (непроверенная выгрузка)';download.onclick=()=>{
+  document.getElementById('backupDetails').hidden=false;
   const status=document.getElementById('backupStatus');status.textContent='Подготовка непроверенной выгрузки исходного JSON…';
   try{const raw=persistence.readRaw();if(raw===null)throw Error('Сохранённый источник отсутствует.');downloadJsonText(raw,'prorabka-recovery.json');status.textContent='Исходный JSON подготовлен к скачиванию без проверки пригодности к восстановлению. Это не подтверждённая резервная копия.'}
   catch(error){status.textContent='Исходный JSON не подготовлен: '+error.message}
+  status.scrollIntoView({block:'center'});
  };panel.append(download);
 }
 function save(options){
