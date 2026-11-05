@@ -460,13 +460,13 @@ function weeklyPayroll(anchor,paymentDate,workerId=''){
 function prepareWeeklyPayments(items,anchor,paymentDate,paymentSource){
  const range=wageWeekRange(anchor);wageWeekRange(paymentDate);
  if(!['other','accountable'].includes(paymentSource))throw Error('Выберите источник выплаты.');
- const ids=new Set(),next=[];
+ const ids=new Set(),next=[],allocateId=ProrabkaStorage.createIdAllocator(db.payments);
  for(const item of items){
   if(ids.has(item.workerId)||!db.workers.some(w=>w.id===item.workerId))throw Error('Проверьте список сотрудников.');ids.add(item.workerId);
   if(item.amount==null||String(item.amount).trim()==='')continue;
   if(Number(item.amount)<0)throw Error('Сумма выплаты не может быть отрицательной.');const amount=wageCents(item.amount)/100;if(amount===0)continue;
   if(db.payments.some(p=>p.kind==='Выплата'&&p.workerId===item.workerId&&p.weeklyWeekStart===range.from))throw Error('Этому сотруднику уже сохранена недельная выплата за '+range.from+'. Проверьте или измените существующую операцию в зарплате.');
-  const x={id:uid(),workerId:item.workerId,date:paymentDate,kind:'Выплата',amount,paymentSource,weeklyWeekStart:range.from,weeklyWeekEnd:range.to,notes:'Еженедельная выплата: '+range.from+' — '+range.to};
+  const x={id:allocateId(),workerId:item.workerId,date:paymentDate,kind:'Выплата',amount,paymentSource,weeklyWeekStart:range.from,weeklyWeekEnd:range.to,notes:'Еженедельная выплата: '+range.from+' — '+range.to};
   checkPayment(x);next.push(x);
  }
  if(!next.length)throw Error('Укажите хотя бы одну положительную сумму выплаты.');
@@ -494,15 +494,25 @@ async function processReceipt(file){
  const extension=(file.name.split('.').pop()||'').toLowerCase();
  const types={pdf:'application/pdf',docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document',xlsx:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',txt:'text/plain',csv:'text/csv'};
  const image=file.type.startsWith('image/')||['jpg','jpeg','png','webp','gif','heic','heif','bmp'].includes(extension);
- if(!image){const type=types[extension];if(!type)throw Error('«'+file.name+'»: выберите фото, PDF, DOCX, XLSX, TXT или CSV.');if(file.size>1_500_000)throw Error('«'+file.name+'» больше 1,5 МБ. Уменьшите файл.');const data=await readDataURL(file);return {id:uid(),name:file.name,type,data:'data:'+type+';base64,'+data.slice(data.indexOf(',')+1),verified:false}}
+ if(!image){const type=types[extension];if(!type)throw Error('«'+file.name+'»: выберите фото, PDF, DOCX, XLSX, TXT или CSV.');if(file.size>1_500_000)throw Error('«'+file.name+'» больше 1,5 МБ. Уменьшите файл.');const data=await readDataURL(file);return {name:file.name,type,data:'data:'+type+';base64,'+data.slice(data.indexOf(',')+1),verified:false}}
  if(file.size>20_000_000)throw Error('Фото «'+file.name+'» больше 20 МБ. Уменьшите файл.');
  const data=await readDataURL(file);
- return await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{const scale=Math.min(1,1500/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);resolve({id:uid(),name:file.name.replace(/\.[^.]+$/,'.jpg'),type:'image/jpeg',data:canvas.toDataURL('image/jpeg',.7),verified:false})}catch(e){reject(e)}};img.onerror=()=>reject(Error('Не удалось прочитать фото «'+file.name+'». Выберите JPEG, PNG или PDF.'));img.src=data});
+ return await new Promise((resolve,reject)=>{const img=new Image();img.onload=()=>{try{const scale=Math.min(1,1500/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.width*scale));canvas.height=Math.max(1,Math.round(img.height*scale));const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);resolve({name:file.name.replace(/\.[^.]+$/,'.jpg'),type:'image/jpeg',data:canvas.toDataURL('image/jpeg',.7),verified:false})}catch(e){reject(e)}};img.onerror=()=>reject(Error('Не удалось прочитать фото «'+file.name+'». Выберите JPEG, PNG или PDF.'));img.src=data});
 }
 async function addExpenseDocuments(input){
  const files=Array.from(input.files||[]);if(!files.length)return;
  const generation=financeReceiptGeneration,status=document.getElementById('expenseDocumentMessage');financeReceiptBusy=true;financeDraftControls();status.textContent='Подготавливаю документы…';
- try{if(files.length+financeReceiptDraft.length>12)throw Error('К одной операции можно прикрепить до 12 документов.');const added=await Promise.all(files.map(processReceipt));if(generation!==financeReceiptGeneration)return;const next=[...financeReceiptDraft,...added];if(next.reduce((n,r)=>n+(r.data?.length||0),0)>3_300_000)throw Error('Документы одной операции занимают больше 2,4 МБ. Уменьшите файлы.');financeReceiptDraft=next;renderFinanceReceiptDraft();status.textContent='Добавлено документов: '+added.length+'. Сохраните расход. Проверку каждого документа можно отметить отдельно.'}
+ try{
+  if(files.length+financeReceiptDraft.length>12)throw Error('К одной операции можно прикрепить до 12 документов.');
+  const added=await Promise.all(files.map(processReceipt));
+  if(generation!==financeReceiptGeneration)return;
+  const old=recordForEdit('expenses',formEdits.get('expenseForm'));
+  const allocateId=ProrabkaStorage.createIdAllocator([...(old?.receipts||[]),...financeReceiptDraft]);
+  const next=[...financeReceiptDraft,...added.map(receipt=>({id:allocateId(),...receipt}))];
+  if(next.reduce((n,r)=>n+(r.data?.length||0),0)>3_300_000)throw Error('Документы одной операции занимают больше 2,4 МБ. Уменьшите файлы.');
+  financeReceiptDraft=next;renderFinanceReceiptDraft();
+  status.textContent='Добавлено документов: '+added.length+'. Сохраните расход. Проверку каждого документа можно отметить отдельно.';
+ }
  catch(error){if(generation===financeReceiptGeneration)status.textContent=error.message}
  finally{input.value='';if(generation===financeReceiptGeneration){financeReceiptBusy=false;financeDraftControls()}}
 }
@@ -616,10 +626,23 @@ function initFinanceUpgrade(){
  document.getElementById('expensesMissingFilter').addEventListener('click',()=>openExpenseDocumentFilter('missing'));
  document.getElementById('expenseReceipts').addEventListener('change',e=>addExpenseDocuments(e.currentTarget));document.getElementById('expenseCamera').addEventListener('change',e=>addExpenseDocuments(e.currentTarget));
  document.getElementById('expenseForm').addEventListener('submit',e=>{
-  e.preventDefault();if(financeReceiptBusy)return;const form=e.currentTarget,x=formData(form),old=db.expenses.find(a=>a.id===x.id),before=db;
-  x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){document.getElementById('expenseDocumentMessage').textContent='Укажите положительную сумму расхода.';return}
-  delete x.receipts;delete x.camera;x.receipts=JSON.parse(JSON.stringify(financeReceiptDraft));const record={...old,...x};try{ProrabkaStorage.protectSalaryExpenses(before,{...db,expenses:old?db.expenses.map(a=>a.id===x.id?record:a):[...db.expenses,record]})}catch(error){document.getElementById('expenseDocumentMessage').textContent=error.message;return}db={...db,expenses:old?db.expenses.map(a=>a.id===x.id?record:a):[...db.expenses,record]};
-  if(!save()){db=before;renderAll();document.getElementById('expenseDocumentMessage').textContent='Расход не сохранён. Прежняя запись сохранена; документы остались в форме.';return}resetForm('expenseForm');document.getElementById('expenseDocumentMessage').textContent='Расход сохранён. Статус: '+expenseDocumentLabel(record)+'.';
+  e.preventDefault();
+  if(financeReceiptBusy)return;
+  const x=formData(e.currentTarget),status=document.getElementById('expenseDocumentMessage');
+  try{
+   const {target,old}=prepareFormRecord('expenseForm','expenses',x);
+   x.amount=Number(x.amount);
+   if(!Number.isFinite(x.amount)||x.amount<=0)throw Error('Укажите положительную сумму расхода.');
+   delete x.receipts;delete x.camera;
+   x.receipts=JSON.parse(JSON.stringify(financeReceiptDraft));
+   const record={...old,...x};
+   const expenses=target?db.expenses.map(row=>row.id===target.id?record:row):[...db.expenses,record];
+   ProrabkaStorage.protectSalaryExpenses(db,{...db,expenses});
+   if(!saveRecord('expenses',record,target)){
+    renderAll();status.textContent='Расход не сохранён. Документы остались в форме.';return;
+   }
+   resetForm('expenseForm');status.textContent='Расход сохранён. Статус: '+expenseDocumentLabel(record)+'.';
+  }catch(error){status.textContent=error.message}
  });
  document.getElementById('exportCashExcel').addEventListener('click',()=>exportAdvanceReport());document.getElementById('exportExpensesExcel').addEventListener('click',()=>exportExpensesWithDocuments());document.getElementById('exportMissingExpenses').addEventListener('click',()=>exportExpensesWithDocuments(true));document.getElementById('exportAdvanceMissing').addEventListener('click',()=>exportExpensesWithDocuments(true,true));
  renderExistingReceipts([]);
@@ -627,7 +650,7 @@ function initFinanceUpgrade(){
 
 const KEY='moiShtab_v03';
 const today=()=>new Date().toLocaleDateString('en-CA');
-const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+const formEdits=new Map();
 const blank=()=>({version:3,objects:[],tasks:[],works:[],goals:[],workers:[],attendance:[],payments:[],expenses:[],schedule:[],income:[],accountable:[],warehouse:[],warehouseMovements:[]});
 const persistence=ProrabkaStorage.createDataStore({getItem:k=>localStorage.getItem(k),setItem:(k,v)=>localStorage.setItem(k,v)},KEY,blank);
 let db=load();
@@ -660,8 +683,44 @@ function money(n){return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionD
 function objName(id){return db.objects.find(x=>x.id===id)?.name||'—'}
 function workerName(id){return db.workers.find(x=>x.id===id)?.name||'—'}
 function formData(form){return Object.fromEntries(new FormData(form).entries())}
-function resetForm(id){if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm')document.getElementById('substepsEditor').innerHTML='';if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
-function setForm(id,record){if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm')renderSubstepEditor(record.substeps||[]);if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';f.scrollIntoView({behavior:'smooth',block:'start'})}
+function rememberEdit(formId,record){
+ formEdits.set(formId,{id:record.id,previous:JSON.stringify(record)});
+}
+function editTarget(formId,id){
+ const target=formEdits.get(formId);
+ if((target?.id??'')!==(id??''))throw Error('ID формы не соответствует выбранной записи. Откройте форму заново.');
+ return target;
+}
+function recordForEdit(collection,target){
+ if(!target)return undefined;
+ const record=db[collection].find(row=>row.id===target.id);
+ if(!record||JSON.stringify(record)!==target.previous)throw Error('Запись для редактирования отсутствует или изменилась. Откройте её заново.');
+ return record;
+}
+function prepareFormRecord(formId,collection,values){
+ const target=editTarget(formId,values.id);
+ const old=recordForEdit(collection,target);
+ values.id=target?target.id:ProrabkaStorage.createIdAllocator(db[collection])();
+ return {target,old};
+}
+function newRecordChanges(collection,rows){
+ return rows.map(({id})=>({collection,id,mode:'create'}));
+}
+function saveNewRecords(collection,rows){
+ const recordChanges=newRecordChanges(collection,rows);
+ db={...db,[collection]:[...db[collection],...rows]};
+ return save({recordChanges});
+}
+function saveRecord(collection,record,target){
+ if(!target)return saveNewRecords(collection,[record]);
+ recordForEdit(collection,target);
+ if(record.id!==target.id)throw Error('ID редактируемой записи нельзя изменить.');
+ const recordChanges=[{collection,id:target.id,mode:'edit',previous:target.previous}];
+ db={...db,[collection]:db[collection].map(row=>row.id===target.id?record:row)};
+ return save({recordChanges});
+}
+function resetForm(id){formEdits.delete(id);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm')document.getElementById('substepsEditor').innerHTML='';if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
+function setForm(id,record){rememberEdit(id,record);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm')renderSubstepEditor(record.substeps||[]);if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';f.scrollIntoView({behavior:'smooth',block:'start'})}
 function removeItem(collection,id){if(confirm('Удалить эту запись?')){db[collection]=db[collection].filter(x=>x.id!==id);save()}}
 function table(headers,rows){if(!rows.length)return '<div class="empty">Записей пока нет.</div>';return '<div class="table-wrap"><table><thead><tr>'+headers.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'}
 function actionBtns(coll,x,form){const closed=['accountable','expenses','payments'].includes(coll)&&Object.keys(db.advanceReports||{}).find(m=>db.advanceReports[m].status==='approved'&&x.date<=m+'-31');if(closed)return '<span class="tag">Закрыто: '+esc(closed)+'</span>';return `<button class="btn small secondary" onclick="editItem('${coll}','${x.id}','${form}')">Изменить</button> <button class="btn small danger" onclick="removeItem('${coll}','${x.id}')">Удалить</button>`}
@@ -724,12 +783,19 @@ function renderWeeklyPayroll(){
 function renderGoals(){document.getElementById('goalList').innerHTML=table(['Цель','Срок','Статус','Действия'],db.goals.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.due||'—')}</td><td>${esc(x.status)}</td><td>${actionBtns('goals',x,'goalForm')}</td></tr>`))}
 
 function substepRow(x={}){
- const row=document.createElement('div');row.className='substep-editor';row.dataset.subid=x.id||uid();
+ const row=document.createElement('div');row.className='substep-editor';
+ if(Object.hasOwn(x,'id'))row.dataset.subid=x.id;
  row.innerHTML=`<div class="substep-title"><b>Стадия</b><button type="button" class="btn small danger substep-remove">Удалить</button></div><div class="fields"><label>Название *<input class="sub-title" required value="${esc(x.title||'')}" placeholder="Название стадии"></label><label>Начало *<input type="date" class="sub-start" required value="${esc(x.start||'')}"></label><label>Окончание *<input type="date" class="sub-end" required value="${esc(x.end||'')}"></label><label>Ответственный<input class="sub-assignee" list="staffSuggestions" autocomplete="off" value="${esc(x.assignee||'')}"></label><label>Статус<select class="sub-status">${['Запланировано','В работе','Выполнено','Задержка'].map(st=>`<option ${st===(x.status||'Запланировано')?'selected':''}>${st}</option>`).join('')}</select></label><label>Примечание<input class="sub-notes" value="${esc(x.notes||'')}"></label></div>`;
  row.querySelector('.substep-remove').onclick=()=>row.remove();return row;
 }
 function renderSubstepEditor(arr){const el=document.getElementById('substepsEditor');el.innerHTML='';arr.forEach(x=>el.appendChild(substepRow(x)))}
-function collectSubsteps(){return Array.from(document.querySelectorAll('#substepsEditor .substep-editor')).map(el=>({id:el.dataset.subid,title:el.querySelector('.sub-title').value.trim(),start:el.querySelector('.sub-start').value,end:el.querySelector('.sub-end').value,assignee:el.querySelector('.sub-assignee').value.trim(),status:el.querySelector('.sub-status').value,notes:el.querySelector('.sub-notes').value.trim()}))}
+function collectSubsteps(){
+ return Array.from(document.querySelectorAll('#substepsEditor .substep-editor')).map(el=>({
+  ...(el.dataset.subid===undefined?{}:{id:el.dataset.subid}),
+  title:el.querySelector('.sub-title').value.trim(),start:el.querySelector('.sub-start').value,end:el.querySelector('.sub-end').value,
+  assignee:el.querySelector('.sub-assignee').value.trim(),status:el.querySelector('.sub-status').value,notes:el.querySelector('.sub-notes').value.trim()
+ }));
+}
 /* Планирование версии 0.7. Отдельный модуль без изменения локальных данных. */
 function scheduleDaysDelta(a,b){return Math.round((Date.parse(a+'T12:00:00Z')-Date.parse(b+'T12:00:00Z'))/86400000)}
 function scheduleDatePlus(date,days){const d=new Date(date+'T12:00:00Z');d.setUTCDate(d.getUTCDate()+days);return d.toISOString().slice(0,10)}
@@ -869,43 +935,106 @@ function renderExtraAnalytics(){
 }
 function renderStats(){const month=today().slice(0,7);const exp=db.expenses.filter(x=>x.date?.startsWith(month)).reduce((s,x)=>s+Number(x.amount||0),0);const overdue=db.tasks.filter(x=>x.status!=='Выполнена'&&x.due&&x.due<today()).length;document.getElementById('stats').innerHTML=[['Объекты',db.objects.length],['Рабочие',db.workers.length],['Просроченные задачи',overdue],['Расходы в этом месяце',money(exp)]].map(x=>`<div class="stat"><span>${x[0]}</span><strong>${x[1]}</strong></div>`).join('')}
 function renderAll(){if(typeof renderTimesheetReview==='function')renderTimesheetReview();refreshSelects();renderObjects();renderTasks();renderWorks();renderWorkers();renderAttendance();renderPayroll();renderWeeklyPayroll();renderExpenses();renderSchedule();renderStats();renderAnalytics();renderExtraAnalytics();renderFinance();renderFinanceDashboard();renderWarehouse();renderObjectWorkspace()}
-function submitCollection(formId,coll){document.getElementById(formId).addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget;let x=formData(f);if(['taskForm','objectForm'].includes(formId)&&formId==='taskForm'&&activeObjectId)x.objectId=activeObjectId;if(!x.id)x.id=uid();try{if(coll==='attendance')x=prepareManualAttendance(x)}catch(error){alert(error.message);return}const i=db[coll].findIndex(a=>a.id===x.id);if(i>=0)db[coll][i]=coll==='attendance'?{...db[coll][i],...x}:x;else db[coll].push(x);if(save())resetForm(formId)})}
+function submitCollection(formId,collection){
+ document.getElementById(formId).addEventListener('submit',event=>{
+  event.preventDefault();
+  let record=formData(event.currentTarget);
+  if(formId==='taskForm'&&activeObjectId)record.objectId=activeObjectId;
+  try{
+   const {target}=prepareFormRecord(formId,collection,record);
+   if(collection==='attendance')record=prepareManualAttendance(record);
+   if(saveRecord(collection,record,target))resetForm(formId);
+  }catch(error){alert(error.message)}
+ });
+}
 
 document.getElementById('workForm').addEventListener('submit',async e=>{
  e.preventDefault();
- const f=e.currentTarget, x=formData(f), existing=db.works.find(a=>a.id===x.id);
+ const f=e.currentTarget,x=formData(f);
  if(activeObjectId)x.objectId=activeObjectId;
- x.id=x.id||uid();
  const files=Array.from(f.elements.photos.files||[]);
- const readFile=file=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file)});
  try{
-   x.photos=files.length?await Promise.all(files.map(readFile)):(existing?.photos||[]);x.workerIds=Array.from(document.getElementById('workWorkerPicker').selectedOptions).map(o=>o.value);
-   const i=db.works.findIndex(a=>a.id===x.id);
-   if(i>=0)db.works[i]=x;else db.works.push(x);
-   if(save())resetForm('workForm');
- }catch(err){alert('Не удалось прочитать одно из фото. Попробуйте выбрать файлы ещё раз.')}
+  const {target,old}=prepareFormRecord('workForm','works',x);
+  x.workerIds=Array.from(document.getElementById('workWorkerPicker').selectedOptions).map(o=>o.value);
+  x.photos=files.length?await Promise.all(files.map(readDataURL)):(old?.photos||[]);
+  if(formEdits.get('workForm')!==target)throw Error('Выбранная запись изменилась. Откройте форму заново.');
+  if(saveRecord('works',x,target))resetForm('workForm');
+ }catch(error){alert(error.message||'Не удалось прочитать одно из фото. Попробуйте выбрать файлы ещё раз.')}
 });
 
 submitCollection('objectForm','objects');submitCollection('taskForm','tasks');
-document.getElementById('addSubstep').addEventListener('click',()=>{const row=substepRow();document.getElementById('substepsEditor').appendChild(row);row.querySelector('.sub-title').focus();row.scrollIntoView({behavior:'smooth',block:'nearest'});});
-document.getElementById('scheduleForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);if(activeObjectId)x.objectId=activeObjectId;if(x.end<x.start){alert('Дата окончания этапа раньше начала.');return;}const substeps=collectSubsteps();if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start)){alert('Проверьте название и сроки каждой стадии.');return;}x.id=x.id||uid();x.substeps=substeps;const i=db.schedule.findIndex(a=>a.id===x.id);if(i>=0)db.schedule[i]=x;else db.schedule.push(x);if(save())resetForm('scheduleForm')});submitCollection('workerForm','workers');submitCollection('attendanceForm','attendance');submitCollection('incomeForm','income');
-document.getElementById('accountableForm').addEventListener('submit',e=>{e.preventDefault();const f=e.currentTarget,x=formData(f);x.id=x.id||uid();x.amount=Number(x.amount);if(!Number.isFinite(x.amount)||x.amount<=0){alert('Укажите положительную сумму.');return}const i=db.accountable.findIndex(a=>a.id===x.id);if(i>=0)db.accountable[i]={...db.accountable[i],...x};else db.accountable.push(x);if(save())resetForm('accountableForm')});
+document.getElementById('addSubstep').addEventListener('click',()=>{
+ try{
+  const old=recordForEdit('schedule',formEdits.get('scheduleForm'));
+  const allocateId=ProrabkaStorage.createIdAllocator([...(old?.substeps||[]),...collectSubsteps()]);
+  const row=substepRow({id:allocateId()});
+  document.getElementById('substepsEditor').appendChild(row);
+  row.querySelector('.sub-title').focus();
+  row.scrollIntoView({behavior:'smooth',block:'nearest'});
+ }catch(error){alert(error.message)}
+});
+document.getElementById('scheduleForm').addEventListener('submit',event=>{
+ event.preventDefault();
+ const record=formData(event.currentTarget);
+ if(activeObjectId)record.objectId=activeObjectId;
+ try{
+  if(record.end<record.start)throw Error('Дата окончания этапа раньше начала.');
+  const substeps=collectSubsteps();
+  if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start))throw Error('Проверьте название и сроки каждой стадии.');
+  const {target}=prepareFormRecord('scheduleForm','schedule',record);
+  record.substeps=substeps;
+  if(saveRecord('schedule',record,target))resetForm('scheduleForm');
+ }catch(error){alert(error.message)}
+});
+submitCollection('workerForm','workers');
+submitCollection('attendanceForm','attendance');
+submitCollection('incomeForm','income');
+document.getElementById('accountableForm').addEventListener('submit',event=>{
+ event.preventDefault();
+ const values=formData(event.currentTarget);
+ try{
+  values.amount=Number(values.amount);
+  if(!Number.isFinite(values.amount)||values.amount<=0)throw Error('Укажите положительную сумму.');
+  const {target,old}=prepareFormRecord('accountableForm','accountable',values);
+  if(saveRecord('accountable',{...old,...values},target))resetForm('accountableForm');
+ }catch(error){alert(error.message)}
+});
 function syncAttendanceStatus(){const f=document.getElementById('attendanceForm'),status=f.elements.status.value;if(status==='Отсутствовал')f.elements.hours.value='0';f.elements.shifts.value=status==='Часы'?(Number(f.elements.hours.value)||0)/8:({'Смена':1,'Половина смены':0.5,'Отсутствовал':0})[status]??'';}
 document.getElementById('attendanceForm').elements.status.addEventListener('change',syncAttendanceStatus);
 document.getElementById('attendanceForm').elements.hours.addEventListener('input',syncAttendanceStatus);
-document.getElementById('paymentForm').addEventListener('submit',e=>{e.preventDefault();let x=formData(e.currentTarget);x.id=x.id||uid();try{x={...db.payments.find(p=>p.id===x.id),...x};checkPayment(x);x.amount=wageCents(x.amount)/100}catch(error){alert(error.message);return}const i=db.payments.findIndex(p=>p.id===x.id);if(i>=0)db.payments[i]={...db.payments[i],...x};else db.payments.push(x);if(save())resetForm('paymentForm')});
+document.getElementById('paymentForm').addEventListener('submit',event=>{
+ event.preventDefault();
+ const values=formData(event.currentTarget);
+ try{
+  const {target,old}=prepareFormRecord('paymentForm','payments',values);
+  const record={...old,...values};
+  checkPayment(record);
+  record.amount=wageCents(record.amount)/100;
+  if(saveRecord('payments',record,target))resetForm('paymentForm');
+ }catch(error){alert(error.message)}
+});
 function openHistoricalRate(id){
- const a=db.attendance.find(x=>x.id===id);if(!a)return;showPage('timesheet');const panel=document.getElementById('historicalRatePanel'),f=document.getElementById('historicalRateForm');panel.hidden=false;f.elements.attendanceId.value=id;f.elements.rate.value=a.ratePerShift??'';f.elements.reason.value=a.rateConfirmationReason||'';document.getElementById('historicalRateRecord').textContent=a.date+' · '+workerName(a.workerId)+' · '+(a.status||'Историческая запись');document.getElementById('historicalRateStatus').textContent='';previewHistoricalRate();panel.scrollIntoView({block:'start',behavior:'smooth'});
+ const a=db.attendance.find(x=>x.id===id);if(!a)return;rememberEdit('historicalRateForm',a);showPage('timesheet');const panel=document.getElementById('historicalRatePanel'),f=document.getElementById('historicalRateForm');panel.hidden=false;f.elements.attendanceId.value=id;f.elements.rate.value=a.ratePerShift??'';f.elements.reason.value=a.rateConfirmationReason||'';document.getElementById('historicalRateRecord').textContent=a.date+' · '+workerName(a.workerId)+' · '+(a.status||'Историческая запись');document.getElementById('historicalRateStatus').textContent='';previewHistoricalRate();panel.scrollIntoView({block:'start',behavior:'smooth'});
 }
 function previewHistoricalRate(){
  const f=document.getElementById('historicalRateForm'),a=db.attendance.find(x=>x.id===f.elements.attendanceId.value);if(!a)return;const rate=f.elements.rate.value;
  document.getElementById('historicalRatePreview').textContent='Начисление сейчас: '+money(attendanceAmount(a))+(rate!==''&&Number(rate)>=0?' · После фиксации: '+money(attendanceAmount({...a,ratePerShift:Number(rate)})):' · Укажите подтверждённую ставку, она не подставляется по предположению.');
 }
 document.getElementById('historicalRateForm').elements.rate.addEventListener('input',previewHistoricalRate);
-document.getElementById('historicalRateCancel').addEventListener('click',()=>{document.getElementById('historicalRatePanel').hidden=true});
+document.getElementById('historicalRateCancel').addEventListener('click',()=>{formEdits.delete('historicalRateForm');document.getElementById('historicalRatePanel').hidden=true});
 document.getElementById('historicalRateForm').addEventListener('submit',e=>{
  e.preventDefault();const f=e.currentTarget,status=document.getElementById('historicalRateStatus');
- try{const next=confirmedHistoricalRate(f.elements.attendanceId.value,f.elements.rate.value,f.elements.reason.value);db.attendance=db.attendance.map(a=>a.id===next.id?next:a);if(save()){status.textContent='Историческая ставка сохранена. Текущая ставка сотрудника больше не влияет на эту запись.';previewHistoricalRate()}else status.textContent='Ставка не сохранена. Введённые значения оставлены для повторной попытки.'}catch(error){status.textContent=error.message}
+ try{
+  const target=editTarget('historicalRateForm',f.elements.attendanceId.value);
+  if(!target)throw Error('Сначала выберите запись смены.');
+  recordForEdit('attendance',target);
+  const next=confirmedHistoricalRate(target.id,f.elements.rate.value,f.elements.reason.value);
+  if(saveRecord('attendance',next,target)){
+   rememberEdit('historicalRateForm',db.attendance.find(row=>row.id===target.id));
+   status.textContent='Историческая ставка сохранена. Текущая ставка сотрудника больше не влияет на эту запись.';
+   previewHistoricalRate();
+  }else status.textContent='Ставка не сохранена. Введённые значения оставлены для повторной попытки.';
+ }catch(error){status.textContent=error.message}
 });
 document.getElementById('weeklyAnchor').value=today();document.getElementById('weeklyPaymentDate').value=today();
 for(const id of ['weeklyAnchor','weeklyPaymentDate','weeklyWorker'])document.getElementById(id).addEventListener('change',renderWeeklyPayroll);
@@ -914,7 +1043,7 @@ document.getElementById('weeklyPaymentForm').addEventListener('submit',e=>{
  try{
   const items=Array.from(document.querySelectorAll('[data-weekly-worker]:not(:disabled)')).map(el=>({workerId:el.dataset.weeklyWorker,amount:el.value}));
   const next=prepareWeeklyPayments(items,document.getElementById('weeklyAnchor').value,document.getElementById('weeklyPaymentDate').value,document.getElementById('weeklyPaymentSource').value);
-  db.payments.push(...next);if(save()){for(const payment of next)weeklyPaymentDrafts.delete(payment.weeklyWeekStart+'|'+payment.workerId);status.textContent='Сохранено выплат: '+next.length+'. Сумма: '+money(wageSum(next.map(x=>x.amount)))+'. Дата: '+next[0].date}else status.textContent='Выплата не сохранена. Суммы оставлены для повторной попытки.';
+  if(saveNewRecords('payments',next)){for(const payment of next)weeklyPaymentDrafts.delete(payment.weeklyWeekStart+'|'+payment.workerId);status.textContent='Сохранено выплат: '+next.length+'. Сумма: '+money(wageSum(next.map(x=>x.amount)))+'. Дата: '+next[0].date}else status.textContent='Выплата не сохранена. Суммы оставлены для повторной попытки.';
  }catch(error){status.textContent=error.message}
 });
 document.getElementById('paymentReset').addEventListener('click',()=>resetForm('paymentForm'));
@@ -1333,12 +1462,24 @@ document.getElementById('warehouseObjectFilter').addEventListener('change',rende
 function editWarehouse(id){const it=db.warehouse.find(x=>x.id===id);if(!it)return;showPage('warehouse');setForm('warehouseItemForm',it)}
 function removeWarehouse(id){if(db.warehouseMovements.some(x=>x.itemId===id)){alert('Нельзя удалить инструмент с историей операций. История должна быть сохранена.');return}removeItem('warehouse',id)}
 function removeWarehouseMove(id){const op=db.warehouseMovements.find(x=>x.id===id),it=db.warehouse.find(x=>x.id===op?.itemId);if(!op||!it)return;const newQty=warehouseQty(it)-(['return','restock'].includes(op.kind)?Number(op.qty):-Number(op.qty));if(newQty<0){alert('Нельзя отменить: это сделает остаток отрицательным. Сначала отмените последующие выдачи или списания.');return;}if(confirm('Отменить эту операцию?')){db.warehouseMovements=db.warehouseMovements.filter(x=>x.id!==id);save()}}
-document.getElementById('warehouseItemForm').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,x=formData(form);x.baseQty=Number(x.baseQty);if(!x.objectId||!Number.isInteger(x.baseQty)||x.baseQty<0){alert('Выберите объект и целое количество.');return;}
- const old=db.warehouse.find(it=>it.id===x.id);if(old){const delta=x.baseQty-Number(old.baseQty||0);if(warehouseQty(old)+delta<0){alert('Количество нельзя уменьшить ниже уже выданного или списанного.');return;}}
- x.id=x.id||uid();const i=db.warehouse.findIndex(it=>it.id===x.id);if(i>=0)db.warehouse[i]=x;else db.warehouse.push(x);if(save())resetForm('warehouseItemForm')});
+document.getElementById('warehouseItemForm').addEventListener('submit',event=>{
+ event.preventDefault();
+ const record=formData(event.currentTarget);
+ try{
+  record.baseQty=Number(record.baseQty);
+  if(!record.objectId||!Number.isInteger(record.baseQty)||record.baseQty<0)throw Error('Выберите объект и целое количество.');
+  const {target,old}=prepareFormRecord('warehouseItemForm','warehouse',record);
+  if(old&&warehouseQty(old)+(record.baseQty-Number(old.baseQty||0))<0)throw Error('Количество нельзя уменьшить ниже уже выданного или списанного.');
+  if(saveRecord('warehouse',record,target))resetForm('warehouseItemForm');
+ }catch(error){alert(error.message)}
+});
 document.getElementById('warehouseReset').addEventListener('click',()=>resetForm('warehouseItemForm'));
 document.getElementById('warehouseMoveForm').addEventListener('submit',e=>{e.preventDefault();const form=e.currentTarget,x=formData(form);const it=db.warehouse.find(y=>y.id===x.itemId);x.qty=Number(x.qty);if(!it||!Number.isInteger(x.qty)||x.qty<=0){alert('Выберите инструмент и целое положительное количество.');return;}if(['issue','writeoff'].includes(x.kind)&&warehouseQty(it)<x.qty){alert('Недостаточно инструментов на остатке.');return;}
- x.id=uid();db.warehouseMovements.push(x);if(save()){form.reset();form.elements.date.value=today()}});
+ try{
+  x.id=ProrabkaStorage.createIdAllocator(db.warehouseMovements)();
+  if(saveNewRecords('warehouseMovements',[x])){form.reset();form.elements.date.value=today()}
+ }catch(error){alert(error.message)}
+});
 function warehouseExcel(){
  const escapeXML=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
  const cell=v=>`<Cell><Data ss:Type="${typeof v==='number'?'Number':'String'}">${escapeXML(v)}</Data></Cell>`;
@@ -1363,16 +1504,15 @@ document.getElementById('workersImportButton').addEventListener('click',async()=
   if(data.kind!=='prorabka-workers-v1'||!Array.isArray(data.workers)||data.workers.length>2000)throw Error('Выберите подготовленный файл сотрудников.');
   const normalize=s=>s.trim().toLocaleLowerCase('ru').replace(/ё/g,'е').replace(/\s+/g,' ');
   const seen=new Set(db.workers.map(w=>normalize(String(w.name||''))));
-  const added=[];
+  const added=[],allocateId=ProrabkaStorage.createIdAllocator(db.workers);
   for(const w of data.workers){
    if(!w||typeof w.name!=='string'||!w.name.trim()||w.name.length>160)throw Error('В файле есть некорректное имя.');
    const name=w.name.trim().replace(/\s+/g,' '),key=normalize(name);
    if(seen.has(key))continue;seen.add(key);
-   added.push({id:uid(),name,trade:'',rate:null,phone:''});
+   added.push({id:allocateId(),name,trade:'',rate:null,phone:''});
   }
   if(!added.length){status.textContent='Все сотрудники из файла уже есть в списке.';return;}
-  const before=db;db={...db,workers:[...db.workers,...added]};
-  if(!save()){db=before;renderAll();status.textContent='Сотрудники не добавлены: не удалось сохранить данные.';return;}
+  if(!saveNewRecords('workers',added)){renderAll();status.textContent='Сотрудники не добавлены: не удалось сохранить данные.';return;}
   status.textContent='Добавлено сотрудников: '+added.length+'. Уже были в списке: '+(data.workers.length-added.length)+'. Ставки новых сотрудников не указаны.';
   input.value='';
  }catch(err){status.textContent=err instanceof SyntaxError?'Не удалось прочитать JSON-файл.':(err.message||'Не удалось прочитать файл.');}
@@ -1414,10 +1554,14 @@ function prepareTimesheetImport(p){
  if([...entries.values()].some(e=>e.paid&&!refs.has(e.sourceKey)))fail('Для части оплаченных смен нет выплаты.');
  for(const r of p.review)if(!r||!text(r.sheet)||!text(r.cell,20)||!validDate(r.date)||!text(r.reason,500)||!text(r.workerName)||!['string','number'].includes(typeof r.rawValue))fail('Некорректная строка для уточнения.');
  const next=JSON.parse(JSON.stringify(db)),workers=new Map(),stats={workersAdded:0,entriesAdded:0,paymentsAdded:0,entriesSkipped:0,paymentsSkipped:0};
+ const allocateWorkerId=ProrabkaStorage.createIdAllocator(next.workers);
+ const allocateObjectId=ProrabkaStorage.createIdAllocator(next.objects);
+ const allocateAttendanceId=ProrabkaStorage.createIdAllocator(next.attendance);
+ const allocatePaymentId=ProrabkaStorage.createIdAllocator(next.payments);
  for(const w of next.workers){const n=timesheetNorm(w.name);if(names.has(n)&&workers.has(n))fail('В приложении несколько сотрудников с именем «'+w.name+'». Уточните записи перед переносом.');workers.set(n,w)}
  // Existing worker defaults must not change: legacy shifts without a snapshot use them.
  // Imported rates belong to new shifts; only new workers receive the import default.
- for(const [n,name] of names){let w=workers.get(n);if(!w){w={id:uid(),name,trade:'',phone:'',rate:6000};next.workers.push(w);workers.set(n,w);stats.workersAdded++}}
+ for(const [n,name] of names){let w=workers.get(n);if(!w){w={id:allocateWorkerId(),name,trade:'',phone:'',rate:6000};next.workers.push(w);workers.set(n,w);stats.workersAdded++}}
  const attKeys=new Map(),payKeys=new Map();
  for(const a of next.attendance)if(a.importSourceKey){if(attKeys.has(a.importSourceKey))fail('В приложении повторяются ранее импортированные смены.');attKeys.set(a.importSourceKey,a)}
  for(const a of next.payments)if(a.importSourceKey){if(payKeys.has(a.importSourceKey))fail('В приложении повторяются ранее импортированные выплаты.');payKeys.set(a.importSourceKey,a)}
@@ -1427,26 +1571,36 @@ function prepareTimesheetImport(p){
   const old=attKeys.get(e.sourceKey),signature=entrySig(e),worker=workers.get(timesheetNorm(e.workerName));
   if(old){if(old.importFingerprint!==signature)fail('Источник смены '+e.sheet+'!'+e.cell+' изменился после предыдущего переноса. Нужна сверка.');stats.entriesSkipped++;continue}
   if(next.attendance.some(a=>!a.importSourceKey&&a.workerId===worker.id&&a.date===e.date))fail('Уже есть ручная запись табеля: '+worker.name+', '+e.date+'. Сверьте её перед переносом, чтобы не задвоить смены.');
-  let objectId='';if(e.objectName){const n=timesheetNorm(e.objectName);let o=objects.get(n);if(!o){o={id:uid(),name:e.objectName,address:'',manager:'',notes:'Объект из табеля'};next.objects.push(o);objects.set(n,o)}objectId=o.id}
-  next.attendance.push({id:uid(),date:e.date,workerId:worker.id,objectId,status:e.shifts===0.5?'Половина смены':'Смена',hours:'',shifts:e.shifts,fine:e.fine,deduction:0,adjustmentReason:e.fine?'Красная отметка в исходном табеле':'',notes:e.sheet+'!'+e.cell+' · исходная отметка: '+String(e.rawValue),shiftType:e.shiftType,ratePerShift:e.rate,sourcePaid:e.paid,importSourceKey:e.sourceKey,importFingerprint:signature});stats.entriesAdded++;
+  let objectId='';if(e.objectName){const n=timesheetNorm(e.objectName);let o=objects.get(n);if(!o){o={id:allocateObjectId(),name:e.objectName,address:'',manager:'',notes:'Объект из табеля'};next.objects.push(o);objects.set(n,o)}objectId=o.id}
+  next.attendance.push({id:allocateAttendanceId(),date:e.date,workerId:worker.id,objectId,status:e.shifts===0.5?'Половина смены':'Смена',hours:'',shifts:e.shifts,fine:e.fine,deduction:0,adjustmentReason:e.fine?'Красная отметка в исходном табеле':'',notes:e.sheet+'!'+e.cell+' · исходная отметка: '+String(e.rawValue),shiftType:e.shiftType,ratePerShift:e.rate,sourcePaid:e.paid,importSourceKey:e.sourceKey,importFingerprint:signature});stats.entriesAdded++;
  }
  for(const pmt of p.payments){
   const worker=workers.get(timesheetNorm(pmt.workerName)),old=payKeys.get(pmt.sourceKey),signature=JSON.stringify([timesheetNorm(pmt.workerName),pmt.date,pmt.amount,[...pmt.sourceKeys].sort()]);
   if(old){if(old.importFingerprint!==signature)fail('Источник выплаты '+worker.name+', '+pmt.date+' изменился. Нужна сверка.');stats.paymentsSkipped++;continue}
   if(next.payments.some(a=>!a.importSourceKey&&a.workerId===worker.id&&['Аванс','Выплата'].includes(a.kind)&&a.date?.slice(0,7)===pmt.date.slice(0,7)))fail('Уже есть ручная выплата или аванс: '+worker.name+', '+pmt.date.slice(0,7)+'. Сверьте её перед переносом, чтобы не задвоить выплаты.');
-  next.payments.push({id:uid(),date:pmt.date,workerId:worker.id,kind:'Выплата',amount:pmt.amount,paymentSource:'',notes:'Зелёные смены из «Табеля Нагатинская». Конец месяца — разовое правило этого переноса; фактическая дата в исходнике не указана.',importSourceKey:pmt.sourceKey,importFingerprint:signature});stats.paymentsAdded++;
+  next.payments.push({id:allocatePaymentId(),date:pmt.date,workerId:worker.id,kind:'Выплата',amount:pmt.amount,paymentSource:'',notes:'Зелёные смены из «Табеля Нагатинская». Конец месяца — разовое правило этого переноса; фактическая дата в исходнике не указана.',importSourceKey:pmt.sourceKey,importFingerprint:signature});stats.paymentsAdded++;
  }
  // Review rows are retained in backups, without assigning them to individual staff.
  const review=p.review.map(r=>({sheet:r.sheet,cell:r.cell,workerName:r.workerName,date:r.date,rawValue:r.rawValue,quantity:r.quantity,paid:r.paid,fine:r.fine,reason:r.reason}));
  next.timesheetImports=Array.isArray(next.timesheetImports)?next.timesheetImports:[];
- if(!next.timesheetImports.some(x=>x.id==='nagatinskaya-2026'))next.timesheetImports.push({id:'nagatinskaya-2026',sourceFile:'Табель Нагатинская.xlsx',year:2026,review});
+ const importSourceKey='nagatinskaya-2026';
+ if(!next.timesheetImports.some(x=>x.id===importSourceKey||x.importSourceKey===importSourceKey)){
+  next.timesheetImports.push({
+   id:ProrabkaStorage.createIdAllocator(next.timesheetImports)(),
+   importSourceKey,sourceFile:'Табель Нагатинская.xlsx',year:2026,review
+  });
+ }
  for(const k of ['accrued','paid','fines'])totals[k]/=100;totals.balance=totals.accrued-totals.paid-totals.fines;
  const months=[...monthly.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(m=>({...m,accrued:m.accrued/100,paid:m.paid/100,fines:m.fines/100}));
  return {next,stats,totals,months};
 }
 function commitTimesheetImport(payload){
- const plan=prepareTimesheetImport(payload),before=db;db=plan.next;
- if(!save()){db=before;renderAll();throw Error('Перенос не удалось сохранить. Прежние данные сохранены; освободите место и повторите.');}
+ const plan=prepareTimesheetImport(payload);
+ const recordChanges=['workers','objects','attendance','payments','timesheetImports'].flatMap(collection=>
+  newRecordChanges(collection,plan.next[collection].slice(db[collection]?.length??0))
+ );
+ db=plan.next;
+ if(!save({recordChanges})){renderAll();throw Error('Перенос не удалось сохранить. Прежние данные сохранены; освободите место и повторите.');}
  return plan;
 }
 function timesheetPlanHTML(plan,completed=false){const {stats:s,totals:t}=plan;

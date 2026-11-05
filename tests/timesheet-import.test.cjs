@@ -6,16 +6,26 @@ const plain=x=>JSON.parse(JSON.stringify(x));
 function fixture(){return {version:3,objects:[],workers:[{id:'w',name:'Тест',rate:9000,phone:'synthetic'}],warehouse:[],tasks:[],works:[],goals:[],attendance:[{id:'old',workerId:'w',date:'2026-04-01',status:'Смена',shifts:1}],payments:[],expenses:[],income:[],accountable:[],schedule:[],warehouseMovements:[]};}
 function payload(paid=false){return {kind:'prorabka-timesheet-v1',year:2026,rate:6000,workers:[{name:'Тест',rate:6000}],entries:[{sourceKey:'t26_'+'a'.repeat(24),workerName:'Тест',date:'2026-05-01',shiftType:'day',sheet:'Май',cell:'A1',objectName:'Тестовый объект',shifts:1,rate:6000,paid,fill:paid?'00B050':'',accrued:6000,fine:0,paidAmount:paid?6000:0,rawValue:1}],payments:paid?[{sourceKey:'p26_'+'b'.repeat(24),workerName:'Тест',date:'2026-05-31',kind:'Выплата',amount:6000,sourceKeys:['t26_'+'a'.repeat(24)]}]:[],review:[]};}
 function harness(data=fixture()){
- let serial=0;const disk={raw:JSON.stringify(data),fail:false,getItem(){return this.raw},setItem(k,v){if(this.fail)throw Error('quota');this.raw=v}};
+ const disk={raw:JSON.stringify(data),fail:false,getItem(){return this.raw},setItem(k,v){if(this.fail)throw Error('quota');this.raw=v}};
  const persistence=create(disk,'db',fixture);
- const c=vm.createContext({db:persistence.initial(),persistence,uid:()=> 'new'+(++serial),document:{getElementById:()=>null},renderAll:()=>{},storageNotice:()=>{},alert:()=>{},console,esc:String,money:String,table:(headers,rows)=>headers.join('|')+rows.join('')});
+ const c=vm.createContext({db:persistence.initial(),persistence,ProrabkaStorage:require('../storage.js'),document:{getElementById:()=>null},renderAll:()=>{},storageNotice:()=>{},alert:()=>{},console,esc:String,money:String,table:(headers,rows)=>headers.join('|')+rows.join('')});
  vm.runInContext(html.slice(html.indexOf('function wageCents'),html.indexOf('/* Finance extension')),c);
  vm.runInContext(html.slice(html.indexOf('const timesheetNorm='),html.indexOf('function attendanceAmount')),c);
  vm.runInContext(html.slice(html.indexOf('function periodOK'),html.indexOf('function renderPayroll')),c);
  vm.runInContext(html.slice(html.indexOf('function save(options)'),html.indexOf("window.addEventListener('storage'")),c);
+ vm.runInContext(html.slice(html.indexOf('function newRecordChanges'),html.indexOf('function saveNewRecords')),c);
  vm.runInContext(html.slice(html.indexOf('function prepareTimesheetImport'),html.indexOf('let pendingTimesheet=')),c);
  return {c,disk,persistence};
 }
+test('P3 repeat import preserves the legacy review record and its ID',()=>{
+ const data=fixture();
+ const legacy={id:'nagatinskaya-2026',sourceFile:'Табель Нагатинская.xlsx',year:2026,review:[]};
+ data.timesheetImports=[legacy];
+ const {c}=harness(data);
+ c.commitTimesheetImport(payload());
+ c.commitTimesheetImport(payload());
+ assert.deepEqual(plain(c.db.timesheetImports),[legacy]);
+});
 test('B0-01 preview and actual commit preserve 9000 legacy accrual and snapshot 6000 for new shift',()=>{
  const {c,disk}=harness(),before=JSON.stringify(c.db),raw=disk.raw,p=payload();
  const oldPayroll=plain(c.payrollCalc('2026-04-01','2026-04-30'));
