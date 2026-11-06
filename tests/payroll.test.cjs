@@ -2,7 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
 const html=fs.readFileSync(require.resolve('../index.html'),'utf8');
 function context(){
- let serial=0;const c=vm.createContext({uid:()=> 'new'+(++serial),db:{workers:[{id:'w',name:'Тест',rate:6000}],attendance:[],payments:[]}});
+ const c=vm.createContext({ProrabkaStorage:require('../storage.js'),db:{workers:[{id:'w',name:'Тест',rate:6000}],attendance:[],payments:[]}});
  vm.runInContext(html.slice(html.indexOf('function wageCents'),html.indexOf('/* Finance extension')),c);
  vm.runInContext(html.slice(html.indexOf('function periodOK'),html.indexOf('function renderPayroll')),c);return c;
 }

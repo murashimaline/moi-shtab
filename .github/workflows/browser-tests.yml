@@ -10,11 +10,16 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps chromium
+      - run: node tests/browser-record-ids.cjs
+        env:
+          BROWSER_CHANNEL: chromium
       - run: node tests/browser-payroll.cjs
         env:
           BROWSER_CHANNEL: chromium

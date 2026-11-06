@@ -37,8 +37,9 @@ test('legacy numeric strings, optional collections, receipts and import provenan
 });
 function harness(){
  const disk=store(),p=create(disk,'db',blank),handlers={},forms={objectForm:{value:{name:'Дом'},addEventListener:(type,fn)=>handlers[type]=fn}};
- const context=vm.createContext({persistence:p,db:p.initial(),document:{getElementById:id=>forms[id]},alert:()=>{},storageNotice:()=>{},console:{error:()=>{}},renderAll:()=>{},formData:f=>({...f.value}),resetForm:()=>{context.resets++},uid:()=> 'new',activeObjectId:'',resets:0});
+ const context=vm.createContext({persistence:p,db:p.initial(),ProrabkaStorage:require('../storage.js'),formEdits:new Map(),document:{getElementById:id=>forms[id]},alert:()=>{},storageNotice:()=>{},console:{error:()=>{}},renderAll:()=>{},formData:f=>({...f.value}),resetForm:()=>{context.resets++},activeObjectId:'',resets:0});
  vm.runInContext(html.slice(html.indexOf('function save(options)'),html.indexOf("window.addEventListener('storage'")),context);
+ vm.runInContext(html.slice(html.indexOf('function rememberEdit'),html.indexOf('function resetForm')),context);
  vm.runInContext(html.slice(html.indexOf('function submitCollection('),html.indexOf("document.getElementById('workForm').addEventListener")),context);
  vm.runInContext("submitCollection('objectForm','objects')",context);
  return {disk,p,context,submit:()=>handlers.submit({preventDefault(){},currentTarget:forms.objectForm})};
@@ -67,7 +68,7 @@ test('financial calculations survive persistence unchanged, including opening ca
  assert.deepEqual(calculate(create(disk,'db',blank).initial()),before);assert.equal(before.pay[0].balance,2350);assert.equal(before.cash.opening,4299.75);assert.equal(before.cash.overall,4299.75);
 });
 test('specialized timesheet import remains valid and repeated application skips prior records',()=>{
- const c=vm.createContext({db:validate(blank()),uid:(()=>{let i=0;return ()=> 'id'+(++i)})()});
+ const c=vm.createContext({db:validate(blank()),ProrabkaStorage:require('../storage.js')});
  vm.runInContext(html.slice(html.indexOf('const timesheetNorm='),html.indexOf('function attendanceAmount')),c);
  vm.runInContext(html.slice(html.indexOf('function prepareTimesheetImport'),html.indexOf('function commitTimesheetImport')),c);
  const payload={kind:'prorabka-timesheet-v1',year:2026,rate:6000,workers:[{name:'Иван',rate:6000}],entries:[{sourceKey:'t26_'+'a'.repeat(24),workerName:'Иван',date:'2026-05-01',shiftType:'day',sheet:'Май',cell:'A1',objectName:null,shifts:1,rate:6000,paid:false,accrued:6000,fine:0,paidAmount:0,rawValue:1}],payments:[],review:[]};
