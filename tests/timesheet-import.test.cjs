@@ -6,6 +6,7 @@ const plain=x=>JSON.parse(JSON.stringify(x));
 const serviceMarker={id:'nagatinskaya-2026',review:[]};
 const sourceFile='Табель Нагатинская.xlsx';
 const reviewRow={sheet:'Май',cell:'B1',workerName:'Не определён',date:'2026-05-01',rawValue:1,quantity:1,paid:false,fine:0,reason:'Не определён исполнитель'};
+const sourceRecord={id:'11111111-1111-4111-8111-111111111111',importSourceKey:serviceMarker.id,sourceFile,year:2026,review:[reviewRow]};
 function fixture(){return {version:3,objects:[],workers:[{id:'w',name:'Тест',rate:9000,phone:'synthetic'}],warehouse:[],tasks:[],works:[],goals:[],attendance:[{id:'old',workerId:'w',date:'2026-04-01',status:'Смена',shifts:1}],payments:[],expenses:[],income:[],accountable:[],schedule:[],warehouseMovements:[]};}
 function payload(paid=false){return {kind:'prorabka-timesheet-v1',year:2026,rate:6000,workers:[{name:'Тест',rate:6000}],entries:[{sourceKey:'t26_'+'a'.repeat(24),workerName:'Тест',date:'2026-05-01',shiftType:'day',sheet:'Май',cell:'A1',objectName:'Тестовый объект',shifts:1,rate:6000,paid,fill:paid?'00B050':'',accrued:6000,fine:0,paidAmount:paid?6000:0,rawValue:1}],payments:paid?[{sourceKey:'p26_'+'b'.repeat(24),workerName:'Тест',date:'2026-05-31',kind:'Выплата',amount:6000,sourceKeys:['t26_'+'a'.repeat(24)]}]:[],review:[]};}
 function harness(data=fixture()){
@@ -24,7 +25,7 @@ test('P3 repeat import preserves the legacy review record and its ID',()=>{
  for(const review of [[],[reviewRow]]){
   const legacy={id:serviceMarker.id,sourceFile,year:2026,review};
   const {c}=harness({...fixture(),timesheetImports:[legacy]});
-  const p={...payload(true),review:[reviewRow]};
+  const p={...payload(true),review};
   c.commitTimesheetImport(p);
   c.commitTimesheetImport(p);
   assert.deepEqual(plain(c.db.timesheetImports),[legacy]);
@@ -71,6 +72,42 @@ test('P3 rejects a foreign fixed ID without replacing data or beginning a write'
   assert.equal(disk.writes,0);
   assert.deepEqual(plain(c.db),persistence.readSnapshot());
  }
+});
+function assertImportRefused(timesheetImports,pattern){
+ const {c,disk,persistence}=harness({...fixture(),timesheetImports}),raw=disk.raw;
+ const before=plain(c.db),p={...payload(true),review:[reviewRow]};
+ assert.equal(persistence.status().blocked,false);
+ assert.throws(()=>c.prepareTimesheetImport(p),pattern);
+ assert.throws(()=>c.commitTimesheetImport(p),pattern);
+ assert.equal(disk.writes,0);
+ assert.equal(disk.raw,raw);
+ assert.deepEqual(plain(c.db),before);
+ assert.deepEqual(persistence.readSnapshot(),before);
+}
+test('P3 a source key alone does not identify an earlier timesheet import',()=>{
+ for(const row of [
+  {...sourceRecord,sourceFile:'Other.xlsx'},{...sourceRecord,year:2025},
+  {...sourceRecord,id:'foreign-record'},{...sourceRecord,review:undefined},
+  {...sourceRecord,review:[{...reviewRow,date:'2025-05-01'}]}
+ ])assertImportRefused([row],/Ключ источника .* не соответствует этому табелю/);
+});
+test('P3 refuses ambiguous earlier imports even when their review rows match',()=>{
+ const second={...sourceRecord,id:'22222222-2222-4222-8222-222222222222'};
+ const legacy={id:serviceMarker.id,sourceFile,year:2026,review:[reviewRow]};
+ assertImportRefused([sourceRecord,second,serviceMarker],/несколько записей переноса/);
+ assertImportRefused([legacy,sourceRecord],/несколько записей переноса/);
+});
+test('P3 refuses incoming review rows that differ from either form of stored history',()=>{
+ assertImportRefused([{...sourceRecord,review:[]},serviceMarker],/Строки для уточнения .* отличаются/);
+ assertImportRefused([{id:serviceMarker.id,sourceFile,year:2026,review:[]}],/Строки для уточнения .* отличаются/);
+ assertImportRefused([{...sourceRecord,review:[{...reviewRow,rawValue:2}]}],/Строки для уточнения .* отличаются/);
+});
+test('P3 accepts prior IDs from the secure random bytes path and compares review content, not property order',()=>{
+ const reordered=Object.fromEntries(Object.entries(reviewRow).reverse());
+ const stored={...sourceRecord,id:'ab'.repeat(16),review:[reordered]};
+ const {c}=harness({...fixture(),timesheetImports:[stored]});
+ c.commitTimesheetImport({...payload(true),review:[reviewRow]});
+ assert.deepEqual(plain(c.db.timesheetImports),[stored,serviceMarker]);
 });
 test('B0-01 preview and actual commit preserve 9000 legacy accrual and snapshot 6000 for new shift',()=>{
  const {c,disk}=harness(),before=JSON.stringify(c.db),raw=disk.raw,p=payload();

@@ -371,6 +371,20 @@ const withoutRevision=({_revision,...data})=>data;
   assert.match(await page.locator('#timesheetImportStatus').textContent(),/Служебный ID .* занят/);
   assert.deepEqual(await snapshot(page),before);
  },{...fixture(),timesheetImports:[{...marker,sourceFile:'Another sheet.xlsx',year:2026}]});
+ const earlierImport={id:uuid(20),importSourceKey:marker.id,sourceFile:'Табель Нагатинская.xlsx',year:2026,review:sheet.review};
+ for(const [name,timesheetImports,message] of [
+  ['a foreign source key',[{...earlierImport,sourceFile:'Another sheet.xlsx'}],/Ключ источника .* не соответствует/],
+  ['an ambiguous source key',[earlierImport,{...earlierImport,id:uuid(21)},marker],/несколько записей переноса/],
+  ['incoming rows missing from the earlier review',[{...earlierImport,review:[]},marker],/Строки для уточнения .* отличаются/]
+ ]){
+  await scenario('P3 rejects '+name+' without writing any data',async page=>{
+   const before=await snapshot(page);
+   await previewSheet(page);
+   assert.equal(await page.locator('#timesheetApply').isEnabled(),false);
+   assert.match(await page.locator('#timesheetImportStatus').textContent(),message);
+   assert.deepEqual(await snapshot(page),before);
+  },{...fixture(),timesheetImports});
+ }
  await scenario('P3 does not persist a partial timesheet package on storage or crypto errors',async page=>{
   const before=await snapshot(page);
   await previewSheet(page);

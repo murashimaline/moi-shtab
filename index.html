@@ -1562,6 +1562,20 @@ function prepareTimesheetImport(p){
  const compatible=markerFields===2&&Array.isArray(marker.review)&&marker.review.length===0;
  const historical=markerFields===4&&marker.sourceFile===sourceFile&&marker.year===p.year&&Array.isArray(marker.review)&&marker.review.every(validReview);
  if(marker&&!compatible&&!historical)fail('Служебный ID '+importSourceKey+' занят другой записью. Перенос отменён; данные не изменены.');
+ const sourceRecords=next.timesheetImports.filter(x=>x.importSourceKey===importSourceKey);
+ if(sourceRecords.length>1||(historical&&sourceRecords.length))fail('В базе несколько записей переноса для табеля «Нагатинская». Сверьте их перед повторным переносом. Данные не изменены.');
+ const [sourceRecord]=sourceRecords;
+ const generatedId=/^(?:[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}|[0-9a-f]{32})$/i;
+ if(sourceRecord&&(!generatedId.test(sourceRecord.id)||sourceRecord.sourceFile!==sourceFile||sourceRecord.year!==p.year||!Array.isArray(sourceRecord.review)||!sourceRecord.review.every(validReview))){
+  fail('Ключ источника '+importSourceKey+' занят записью, которая не соответствует этому табелю. Данные не изменены.');
+ }
+ // Compare only the fields saved by the importer, in a stable order.
+ const reviewFields=r=>({sheet:r.sheet,cell:r.cell,workerName:r.workerName,date:r.date,rawValue:r.rawValue,quantity:r.quantity,paid:r.paid,fine:r.fine,reason:r.reason});
+ const review=p.review.map(reviewFields);
+ const existingImport=historical?marker:sourceRecord;
+ if(existingImport&&JSON.stringify(existingImport.review.map(reviewFields))!==JSON.stringify(review)){
+  fail('Строки для уточнения в файле отличаются от сохранённых. Сверьте файл с прежним переносом. Данные не изменены.');
+ }
  const allocateWorkerId=ProrabkaStorage.createIdAllocator(next.workers);
  const allocateObjectId=ProrabkaStorage.createIdAllocator(next.objects);
  const allocateAttendanceId=ProrabkaStorage.createIdAllocator(next.attendance);
@@ -1589,8 +1603,7 @@ function prepareTimesheetImport(p){
   next.payments.push({id:allocatePaymentId(),date:pmt.date,workerId:worker.id,kind:'Выплата',amount:pmt.amount,paymentSource:'',notes:'Зелёные смены из «Табеля Нагатинская». Конец месяца — разовое правило этого переноса; фактическая дата в исходнике не указана.',importSourceKey:pmt.sourceKey,importFingerprint:signature});stats.paymentsAdded++;
  }
  // Review rows are retained in backups, without assigning them to individual staff.
- const review=p.review.map(r=>({sheet:r.sheet,cell:r.cell,workerName:r.workerName,date:r.date,rawValue:r.rawValue,quantity:r.quantity,paid:r.paid,fine:r.fine,reason:r.reason}));
- if(!historical&&!next.timesheetImports.some(x=>x.importSourceKey===importSourceKey)){
+ if(!existingImport){
   next.timesheetImports.push({
    id:ProrabkaStorage.createIdAllocator(next.timesheetImports)(),
    importSourceKey,sourceFile,year:p.year,review

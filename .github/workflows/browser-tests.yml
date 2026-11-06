@@ -17,6 +17,9 @@ jobs:
           node-version: '24'
       - run: npm install --no-save --package-lock=false playwright@1.62.1
       - run: npx playwright install --with-deps chromium
+      - run: node tests/browser-record-ids.cjs
+        env:
+          BROWSER_CHANNEL: chromium
       - run: node tests/browser-payroll.cjs
         env:
           BROWSER_CHANNEL: chromium
@@ -30,9 +33,6 @@ jobs:
         env:
           BROWSER_CHANNEL: chromium
       - run: node tests/browser-safe-export.cjs
-        env:
-          BROWSER_CHANNEL: chromium
-      - run: node tests/browser-record-ids.cjs
         env:
           BROWSER_CHANNEL: chromium
       - run: python tests/check-finance-exports.py
