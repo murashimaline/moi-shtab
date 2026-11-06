@@ -48,6 +48,10 @@ check_order(gantt, 'autoFilter', 'mergeCells', 'conditionalFormatting', 'conditi
 assert gantt.find('s:autoFilter', ns).attrib['ref'] == 'A6:K9'
 assert [m.attrib['ref'] for m in gantt.findall('s:mergeCells/s:mergeCell', ns)] == ['A1:K1', 'A2:K2', 'A4:K4', 'A5:K5']
 assert gantt.find('s:sheetViews/s:sheetView/s:pane', ns).attrib['topLeftCell'] == 'E7'
+columns = gantt.findall('s:cols/s:col', ns)
+assert [int(col.attrib['width']) for col in columns[:11]] == [15, 25, 37, 26, 17, 17, 21, 23, 17, 21, 40]
+assert [(int(col.attrib['min']), int(col.attrib['max']), int(col.attrib['width'])) for col in columns[11:]] == [
+    (i, i, 7) for i in range(12, 26)]
 groups = gantt.findall('s:conditionalFormatting', ns)
 assert [group.attrib['sqref'] for group in groups] == ['A7:K9', 'L7:Y9']
 statuses = ['Задержка', 'В срок', 'Запланировано']
@@ -63,7 +67,12 @@ for group_index, group in enumerate(groups):
 grid = cells(gantt)
 assert [grid[f'C{i}'].findtext('s:is/s:t', namespaces=ns) for i in range(7, 10)] == [
     'Тестовый этап', '  ↳ Тестовая стадия', 'Будущий этап']
-assert grid['M6'].findtext('s:f', namespaces=ns) == 'L6+1'
+first_day = int(grid['L6'].findtext('s:v', namespaces=ns))
+for i, col in enumerate('LMNOPQRSTUVWXY'):
+    cell = grid[f'{col}6']
+    assert cell.attrib['s'] == '6'
+    assert int(cell.findtext('s:v', namespaces=ns)) == first_day + i
+    assert cell.findtext('s:f', namespaces=ns) == (f'{chr(ord(col) - 1)}6+1' if i else None)
 assert [grid[f'H{i}'].findtext('s:v', namespaces=ns) for i in range(7, 10)] == statuses
 assert all(grid[f'{col}{row}'].find('s:f', ns) is not None for row in range(7, 10) for col in 'HIJ')
 summary = schedule['xl/worksheets/sheet2.xml']
