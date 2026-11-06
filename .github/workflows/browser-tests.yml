@@ -30,6 +30,10 @@ jobs:
       - run: node tests/browser-safe-export.cjs
         env:
           BROWSER_CHANNEL: chromium
+      - run: node tests/browser-schedule-exports.cjs
+        env:
+          BROWSER_CHANNEL: chromium
+      - run: python tests/check-schedule-exports.py
       - run: python tests/check-finance-exports.py
       - uses: actions/upload-artifact@v4
         if: always()
