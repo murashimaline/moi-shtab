@@ -1,7 +1,10 @@
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const http=require('node:http'),fs=require('node:fs'),path=require('node:path');
+const {execFileSync}=require('node:child_process');
 const assert=require('node:assert/strict');
 const key='moiShtab_v03',date='2026-05-15';
+const repo=path.join(__dirname,'..');
+const marker={id:'nagatinskaya-2026',review:[]};
 const uuid=n=>'00000000-0000-4000-8000-'+String(n).padStart(12,'0');
 const receipt={id:uuid(13),name:'old.pdf',data:'data:application/pdf;base64,JVBERi0xLjQK',verified:true};
 function fixture(){
@@ -52,24 +55,53 @@ async function saved(page,collection,id){
 }
 const click=(page,id)=>page.evaluate(id=>document.getElementById(id).click(),id);
 const jsonFile=payload=>({name:'synthetic.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(payload))});
+const sourceKey='t26_'+'a'.repeat(24);
+const sheet={
+ kind:'prorabka-timesheet-v1',year:2026,rate:6000,workers:[{name:'Imported worker',rate:6000}],
+ entries:[{sourceKey,workerName:'Imported worker',date:'2026-05-01',shiftType:'day',sheet:'May',cell:'A1',
+  objectName:'Imported site',shifts:1,rate:6000,paid:true,fill:'00B050',accrued:6000,fine:0,paidAmount:6000,rawValue:1}],
+ payments:[{sourceKey:'p26_'+'b'.repeat(24),workerName:'Imported worker',date:'2026-05-31',kind:'Выплата',amount:6000,sourceKeys:[sourceKey]}],
+ review:[{sheet:'May',cell:'B1',workerName:'Unknown worker',date:'2026-05-01',rawValue:1,quantity:1,paid:false,fine:0,reason:'Worker not identified'}]
+};
+async function previewSheet(page){
+ await page.locator('#timesheetImportFile').setInputFiles(jsonFile(sheet));
+ await click(page,'timesheetPreview');
+ await page.waitForFunction(()=>!document.getElementById('timesheetPreview').disabled&&document.getElementById('timesheetImportStatus').textContent);
+}
+async function importSheet(page){
+ await previewSheet(page);
+ assert.equal(await page.locator('#timesheetApply').isEnabled(),true);
+ await click(page,'timesheetApply');
+ assert.match(await page.locator('#timesheetImportStatus').textContent(),/Перенос завершён/);
+}
+const accruals=page=>page.evaluate(()=>db.attendance.map(row=>attendanceAmount(row)));
+const withoutRevision=({_revision,...data})=>data;
 
 (async()=>{
+ const pinned={
+  baseline:'4eb2e73f4dac7da24ed37a2bd38c54d271479aa3',
+  'previous-p3':'534725f5ae90cb4b376a9a1076bead8836b4770c'
+ };
+ const sources=new Map(Object.entries(pinned).flatMap(([prefix,sha])=>['index.html','storage.js'].map(f=>
+  [`/${prefix}/${f}`,execFileSync('git',['show',`${sha}:${f}`],{cwd:repo})]
+ )));
  server=http.createServer((req,res)=>{
-  const f=req.url==='/'?'index.html':req.url.slice(1);
-  if(!['index.html','storage.js'].includes(f))return res.writeHead(404).end();
-  res.setHeader('Content-Type',f.endsWith('.js')?'text/javascript':'text/html');
-  res.end(fs.readFileSync(path.join(__dirname,'..',f)));
+  const f=req.url.endsWith('/')?req.url+'index.html':req.url;
+  const body=sources.get(f)??(['/index.html','/storage.js'].includes(f)?fs.readFileSync(path.join(repo,f.slice(1))):null);
+  if(!body)return res.writeHead(404).end();
+  res.setHeader('Content-Type',f.endsWith('.js')?'text/javascript; charset=utf-8':'text/html; charset=utf-8');
+  res.end(body);
  });
  await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
  const origin='http://127.0.0.1:'+server.address().port;
  browser=await chromium.launch({channel:process.env.BROWSER_CHANNEL||'msedge',executablePath:process.env.BROWSER_EXECUTABLE_PATH||undefined,headless:true});
- async function scenario(name,run){
+ async function scenario(name,run,data=fixture()){
   const ctx=await browser.newContext({acceptDownloads:true});
   await ctx.route('**/*',r=>r.request().url().startsWith(origin)?r.continue():r.abort());
   await ctx.addInitScript(({data,key})=>{
    if(localStorage.getItem(key)===null)localStorage.setItem(key,JSON.stringify(data));
    localStorage.setItem(key+'_before_import','previous backup');
-  },{data:fixture(),key});
+  },{data,key});
   const page=await ctx.newPage(),dialogs=[],errors=[];
   page.on('dialog',d=>{dialogs.push(d.message());return d.accept()});
   page.on('pageerror',e=>errors.push(e.message));
@@ -243,37 +275,125 @@ const jsonFile=payload=>({name:'synthetic.json',mimeType:'application/json',buff
   assert.deepEqual(payments[0],fixture().payments[0]);
   assert.deepEqual(payments.slice(1).map(row=>row.id),[uuid(38),uuid(39)]);
  });
- await scenario('P3 timesheet preview and apply check all new collections and preserve repeat semantics',async page=>{
-  const sourceKey='t26_'+'a'.repeat(24);
-  const payload={
-   kind:'prorabka-timesheet-v1',year:2026,rate:6000,workers:[{name:'Imported worker',rate:6000}],
-   entries:[{sourceKey,workerName:'Imported worker',date:'2026-05-01',shiftType:'day',sheet:'May',cell:'A1',
-    objectName:'Imported site',shifts:1,rate:6000,paid:true,fill:'00B050',accrued:6000,fine:0,paidAmount:6000,rawValue:1}],
-   payments:[{sourceKey:'p26_'+'b'.repeat(24),workerName:'Imported worker',date:'2026-05-31',kind:'Выплата',amount:6000,sourceKeys:[sourceKey]}],review:[]
-  };
-  await page.locator('#timesheetImportFile').setInputFiles(jsonFile(payload));
+ const wageFixture=fixture();
+ wageFixture.workers[0].rate=9000;
+ delete wageFixture.attendance[0].ratePerShift;
+ await scenario('P3 timesheet retries ordinary ID collisions and preserves a single review through JSON and baseline reimport',async page=>{
   const ids=[uuid(1),uuid(40),uuid(1),uuid(41),uuid(2),uuid(42),uuid(3),uuid(43),uuid(20),uuid(44)];
   const before=await snapshot(page);
   await cryptoSequence(page,ids);
-  await click(page,'timesheetPreview');
-  await page.waitForFunction(()=>!document.getElementById('timesheetApply').disabled);
+  await previewSheet(page);
   assert.deepEqual(await snapshot(page),before);
   await cryptoSequence(page,ids);
   await click(page,'timesheetApply');
   await saved(page,'timesheetImports',uuid(44));
+  assert.equal(await page.evaluate(()=>cryptoCalls),10);
   const data=(await snapshot(page)).confirmed;
   assert.equal(data.attendance.at(-1).workerId,uuid(40));
   assert.equal(data.attendance.at(-1).objectId,uuid(41));
   assert.equal(data.payments.at(-1).workerId,uuid(40));
   for(const collection of ['workers','objects','attendance','payments','timesheetImports']){
-   assert.deepEqual(data[collection].slice(0,-1),before.confirmed[collection]);
+   assert.deepEqual(data[collection].slice(0,before.confirmed[collection].length),before.confirmed[collection]);
   }
+  assert.deepEqual(data.timesheetImports.slice(-2),[
+   {id:uuid(44),importSourceKey:marker.id,sourceFile:'Табель Нагатинская.xlsx',year:2026,review:sheet.review},marker
+  ]);
+  assert.deepEqual(await accruals(page),[9000,6000]);
+  assert.equal(await page.locator('#timesheetReview tbody tr').count(),1);
   await cryptoSequence(page,[]);
-  await click(page,'timesheetPreview');
-  await page.waitForFunction(()=>!document.getElementById('timesheetApply').disabled);
-  await click(page,'timesheetApply');
+  await importSheet(page);
   assert.equal(await page.evaluate(()=>cryptoCalls),0);
-  assert.equal((await snapshot(page)).confirmed.timesheetImports.length,2);
+  const savedState=await snapshot(page);
+  assert.deepEqual(withoutRevision(savedState.confirmed),withoutRevision(data));
+  await page.reload();
+  assert.deepEqual(await snapshot(page),savedState);
+  await click(page,'backupToggle');
+  const pending=page.waitForEvent('download');await page.locator('#exportBtn').click();
+  const download=await pending,bytes=fs.readFileSync(await download.path());
+  assert.deepEqual(bytes,Buffer.from(savedState.raw));
+  assert.equal(JSON.parse(bytes).version,3);
+  assert.deepEqual(await snapshot(page),savedState);
+
+  const ctx=await browser.newContext();
+  try{
+   await ctx.route('**/*',r=>r.request().url().startsWith(origin+'/')?r.continue():r.abort());
+   const baseline=await ctx.newPage(),errors=[];
+   baseline.on('dialog',d=>d.accept());
+   baseline.on('pageerror',e=>errors.push(e.message));
+   await baseline.goto(origin+'/baseline/');
+   await baseline.locator('#importFile').setInputFiles({name:'saved-v3.json',mimeType:'application/json',buffer:bytes});
+   await baseline.waitForFunction(()=>document.getElementById('backupStatus').textContent.includes('_before_import'));
+   const restored=(await snapshot(baseline)).confirmed;
+   const {financeHistory,...records}=withoutRevision(restored);
+   const {financeHistory:exportedHistory,...exportedRecords}=withoutRevision(savedState.confirmed);
+   assert.deepEqual(records,exportedRecords);
+   assert.deepEqual(financeHistory.slice(0,exportedHistory.length),exportedHistory);
+   await baseline.reload();
+   assert.deepEqual((await snapshot(baseline)).confirmed,restored);
+   assert.equal(await baseline.locator('#timesheetReview tbody tr').count(),1);
+   assert.deepEqual(await accruals(baseline),[9000,6000]);
+   await importSheet(baseline);
+   assert.deepEqual(withoutRevision((await snapshot(baseline)).confirmed),withoutRevision(restored));
+   assert.equal(await baseline.locator('#timesheetReview tbody tr').count(),1);
+   assert.deepEqual(await accruals(baseline),[9000,6000]);
+   assert.deepEqual(errors,[]);
+  }finally{await ctx.close()}
+ },wageFixture);
+ await scenario('P3 preserves the historical review created by the unchanged baseline',async page=>{
+  await page.goto(origin+'/baseline/');
+  await importSheet(page);
+  const before=(await snapshot(page)).confirmed;
+  const historical=before.timesheetImports.find(row=>row.id===marker.id);
+  assert.deepEqual(historical.review,sheet.review);
+  await page.goto(origin);
+  await importSheet(page);
+  assert.deepEqual(withoutRevision((await snapshot(page)).confirmed),withoutRevision(before));
+  assert.equal(await page.locator('#timesheetReview tbody tr').count(),1);
+ });
+ await scenario('P3 adds only the compatibility marker to data saved by the original P3 commit',async page=>{
+  await page.goto(origin+'/previous-p3/');
+  await importSheet(page);
+  const before=(await snapshot(page)).confirmed;
+  assert.equal(before.timesheetImports.some(row=>row.id===marker.id),false);
+  assert.deepEqual(before.timesheetImports.find(row=>row.importSourceKey===marker.id).review,sheet.review);
+  await page.goto(origin);
+  await cryptoSequence(page,[]);
+  await importSheet(page);
+  const after=(await snapshot(page)).confirmed;
+  assert.equal(await page.evaluate(()=>cryptoCalls),0);
+  assert.deepEqual(withoutRevision(after),{...withoutRevision(before),timesheetImports:[...before.timesheetImports,marker]});
+  assert.equal(await page.locator('#timesheetReview tbody tr').count(),1);
+ });
+ await scenario('P3 refuses a foreign fixed ID without writing any data',async page=>{
+  const before=await snapshot(page);
+  await previewSheet(page);
+  assert.equal(await page.locator('#timesheetApply').isEnabled(),false);
+  assert.match(await page.locator('#timesheetImportStatus').textContent(),/Служебный ID .* занят/);
+  assert.deepEqual(await snapshot(page),before);
+ },{...fixture(),timesheetImports:[{...marker,sourceFile:'Another sheet.xlsx',year:2026}]});
+ await scenario('P3 does not persist a partial timesheet package on storage or crypto errors',async page=>{
+  const before=await snapshot(page);
+  await previewSheet(page);
+  await page.evaluate(()=>{
+   window.originalSetItem=Storage.prototype.setItem;
+   Storage.prototype.setItem=function(k,v){
+    if(k==='moiShtab_v03')throw new DOMException('Synthetic quota','QuotaExceededError');
+    return window.originalSetItem.call(this,k,v);
+   };
+  });
+  await click(page,'timesheetApply');
+  assert.match(await page.locator('#timesheetImportStatus').textContent(),/не удалось сохранить/);
+  assert.deepEqual(await snapshot(page),before);
+  await page.evaluate(()=>Storage.prototype.setItem=window.originalSetItem);
+  await previewSheet(page);
+  await cryptoSequence(page,[uuid(40)]);
+  await click(page,'timesheetApply');
+  assert.equal(await page.evaluate(()=>cryptoCalls),2);
+  assert.match(await page.locator('#timesheetImportStatus').textContent(),/криптографического генератора/);
+  assert.deepEqual(await snapshot(page),before);
+  await page.reload();
+  await importSheet(page);
+  assert.deepEqual((await snapshot(page)).confirmed.timesheetImports.at(-1),marker);
  });
  await scenario('P3 nested stages and receipts reserve IDs while preserving legacy entries',async page=>{
   await page.evaluate(id=>editItem('schedule',id,'scheduleForm'),uuid(7));

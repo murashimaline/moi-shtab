@@ -1552,8 +1552,16 @@ function prepareTimesheetImport(p){
   if(sum!==cents(pay.amount))fail('Сумма выплаты не совпадает с оплаченными сменами.');keys.add(pay.sourceKey);
  }
  if([...entries.values()].some(e=>e.paid&&!refs.has(e.sourceKey)))fail('Для части оплаченных смен нет выплаты.');
- for(const r of p.review)if(!r||!text(r.sheet)||!text(r.cell,20)||!validDate(r.date)||!text(r.reason,500)||!text(r.workerName)||!['string','number'].includes(typeof r.rawValue))fail('Некорректная строка для уточнения.');
+ const validReview=r=>r&&text(r.sheet)&&text(r.cell,20)&&validDate(r.date)&&text(r.reason,500)&&text(r.workerName)&&['string','number'].includes(typeof r.rawValue);
+ if(!p.review.every(validReview))fail('Некорректная строка для уточнения.');
  const next=JSON.parse(JSON.stringify(db)),workers=new Map(),stats={workersAdded:0,entriesAdded:0,paymentsAdded:0,entriesSkipped:0,paymentsSkipped:0};
+ next.timesheetImports=Array.isArray(next.timesheetImports)?next.timesheetImports:[];
+ const importSourceKey='nagatinskaya-2026',sourceFile='Табель Нагатинская.xlsx';
+ const marker=next.timesheetImports.find(x=>x.id===importSourceKey);
+ const markerFields=marker?Object.keys(marker).length:0;
+ const compatible=markerFields===2&&Array.isArray(marker.review)&&marker.review.length===0;
+ const historical=markerFields===4&&marker.sourceFile===sourceFile&&marker.year===p.year&&Array.isArray(marker.review)&&marker.review.every(validReview);
+ if(marker&&!compatible&&!historical)fail('Служебный ID '+importSourceKey+' занят другой записью. Перенос отменён; данные не изменены.');
  const allocateWorkerId=ProrabkaStorage.createIdAllocator(next.workers);
  const allocateObjectId=ProrabkaStorage.createIdAllocator(next.objects);
  const allocateAttendanceId=ProrabkaStorage.createIdAllocator(next.attendance);
@@ -1582,14 +1590,14 @@ function prepareTimesheetImport(p){
  }
  // Review rows are retained in backups, without assigning them to individual staff.
  const review=p.review.map(r=>({sheet:r.sheet,cell:r.cell,workerName:r.workerName,date:r.date,rawValue:r.rawValue,quantity:r.quantity,paid:r.paid,fine:r.fine,reason:r.reason}));
- next.timesheetImports=Array.isArray(next.timesheetImports)?next.timesheetImports:[];
- const importSourceKey='nagatinskaya-2026';
- if(!next.timesheetImports.some(x=>x.id===importSourceKey||x.importSourceKey===importSourceKey)){
+ if(!historical&&!next.timesheetImports.some(x=>x.importSourceKey===importSourceKey)){
   next.timesheetImports.push({
    id:ProrabkaStorage.createIdAllocator(next.timesheetImports)(),
-   importSourceKey,sourceFile:'Табель Нагатинская.xlsx',year:2026,review
+   importSourceKey,sourceFile,year:p.year,review
   });
  }
+ // The unchanged baseline only recognizes this fixed ID; it renders no rows from an empty review.
+ if(!marker)next.timesheetImports.push({id:importSourceKey,review:[]});
  for(const k of ['accrued','paid','fines'])totals[k]/=100;totals.balance=totals.accrued-totals.paid-totals.fines;
  const months=[...monthly.values()].sort((a,b)=>a.month.localeCompare(b.month)).map(m=>({...m,accrued:m.accrued/100,paid:m.paid/100,fines:m.fines/100}));
  return {next,stats,totals,months};
