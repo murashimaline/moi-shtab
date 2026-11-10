@@ -36,6 +36,22 @@ test('B0-01 repeated paid import skips shifts and payments without changing work
  const again=c.commitTimesheetImport(p);assert.equal(again.stats.entriesAdded,0);assert.equal(again.stats.paymentsAdded,0);assert.equal(again.stats.entriesSkipped,1);assert.equal(again.stats.paymentsSkipped,1);
  assert.deepEqual(plain(c.db.workers),workers);assert.deepEqual(plain(c.db.attendance),attendance);assert.deepEqual(plain(c.db.payments),payments);assert.deepEqual(plain(c.db.financeHistory),history);
 });
+test('DI01 repeated paid timesheet imports preserve identical old history without duplicating new events',()=>{
+ const history={at:'2026-01-01T00:00:00.000Z',collection:'payments',id:'legacy',action:'create',before:'null',after:'{"amount":1}'};
+ const data=fixture();data.financeHistory=[history,history];
+ const {c,disk}=harness(data),p=payload(true);
+ c.commitTimesheetImport(p);
+ assert.deepEqual(plain(c.db.financeHistory.slice(0,2)),[history,history]);
+ const expected=plain(c.db.financeHistory),attendance=plain(c.db.attendance),payments=plain(c.db.payments);
+ assert.equal(expected.length,3);
+ for(let attempt=0;attempt<2;attempt++)c.commitTimesheetImport(p);
+ assert.deepEqual(plain(c.db.financeHistory),expected);
+ assert.deepEqual(plain(c.db.attendance),attendance);
+ assert.deepEqual(plain(c.db.payments),payments);
+ assert.equal(c.attendanceAmount(c.db.attendance[0]),9000);
+ assert.equal(c.attendanceAmount(c.db.attendance[1]),6000);
+ assert.deepEqual(JSON.parse(disk.raw).financeHistory,expected);
+});
 test('B0-01 existing snapshots, missing and zero employee rates remain untouched; new workers get import rate',()=>{
  for(const rate of [null,0,'9000']){const data=fixture();data.workers[0].rate=rate;data.attendance[0].ratePerShift=7500;const {c}=harness(data);c.commitTimesheetImport(payload());assert.equal(c.db.workers[0].rate,rate);assert.equal(c.attendanceAmount(c.db.attendance[0]),7500);assert.equal(c.attendanceAmount(c.db.attendance[1]),6000);}
  const data=fixture();data.workers=[];data.attendance=[];const {c}=harness(data);const result=c.commitTimesheetImport(payload());assert.equal(result.stats.workersAdded,1);assert.equal(c.db.workers[0].rate,6000);assert.equal(c.attendanceAmount(c.db.attendance[0]),6000);

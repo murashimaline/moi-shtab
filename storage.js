@@ -100,8 +100,21 @@ function create(storage,key,empty){
     const next=validate(candidate);
     protectClosedReports(confirmed,next);
     protectSalaryExpenses(confirmed,next,{importing});
-    const history=importing?[...(confirmed.financeHistory||[]),...(next.financeHistory||[])]:confirmed.financeHistory||[];
-    next.financeHistory=[...new Map(history.map(r=>[JSON.stringify(r),r])).values(),...financialChanges(confirmed,next)];
+    const history=[...(confirmed.financeHistory||[])];
+    if(importing){
+     // Match occurrences from the backup, preserving repeated events on both sides.
+     const remainingOccurrences=new Map();
+     for(const event of history){
+      const key=JSON.stringify(event);
+      remainingOccurrences.set(key,(remainingOccurrences.get(key)||0)+1);
+     }
+     for(const event of next.financeHistory||[]){
+      const key=JSON.stringify(event),remaining=remainingOccurrences.get(key)||0;
+      if(remaining>0)remainingOccurrences.set(key,remaining-1);
+      else history.push(event);
+     }
+    }
+    next.financeHistory=[...history,...financialChanges(confirmed,next)];
     next._revision={number:(Number(confirmed._revision?.number)||0)+1,token:Date.now().toString(36)+Math.random().toString(36).slice(2)};
     const encoded=JSON.stringify(next);
     // A single setItem is atomic. Failure leaves the previous primary value intact.

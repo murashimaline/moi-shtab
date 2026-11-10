@@ -30,6 +30,9 @@ jobs:
       - run: node tests/browser-safe-export.cjs
         env:
           BROWSER_CHANNEL: chromium
+      - run: node tests/browser-finance-history.cjs
+        env:
+          BROWSER_CHANNEL: chromium
       - run: node tests/browser-schedule-exports.cjs
         env:
           BROWSER_CHANNEL: chromium
