@@ -13,6 +13,50 @@ function resolveReference(data,ref){
  if(!ref||!collections.includes(ref.collection))return undefined;
  return (data[ref.collection]||[]).find(row=>row.id===ref.id);
 }
+function createIdAllocator(rows,crypto=root.crypto){
+ const used=new Set(rows.map(row=>row.id));
+ return ()=>{
+  for(let attempt=0;attempt<8;attempt++){
+   let id;
+   try{
+    if(typeof crypto?.randomUUID==='function'){
+     id=crypto.randomUUID();
+     if(typeof id!=='string'||!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id))throw Error();
+    }else if(typeof crypto?.getRandomValues==='function'){
+     const bytes=new Uint8Array(16);
+     crypto.getRandomValues(bytes);
+     id=Array.from(bytes,byte=>byte.toString(16).padStart(2,'0')).join('');
+    }else throw Error();
+   }catch{
+    throw Error('Не удалось получить новый ID. Проверьте доступность криптографического генератора браузера.');
+   }
+   if(!used.has(id)){
+    used.add(id);
+    return id;
+   }
+  }
+  throw Error('Не удалось получить уникальный ID после 8 попыток. Повторите операцию.');
+ };
+}
+function checkRecordChanges(confirmed,next,changes){
+ const indexes=new Map();
+ for(const {collection,id,mode,previous} of changes){
+  if(!collections.includes(collection))throw Error('Неизвестная коллекция для записи.');
+  if(!indexes.has(collection)){
+   indexes.set(collection,{
+    saved:new Map((confirmed[collection]||[]).map(row=>[row.id,row])),
+    incoming:new Set(next[collection].map(row=>row.id))
+   });
+  }
+  const {saved,incoming}=indexes.get(collection);
+  if(mode==='create'){
+   if(saved.has(id))throw Error('Новая запись получила ID существующей записи. Повторите создание.');
+  }else if(mode==='edit'){
+   if(!saved.has(id)||JSON.stringify(saved.get(id))!==previous)throw Error('Запись для редактирования отсутствует или изменилась. Откройте её заново.');
+  }else throw Error('Неизвестная операция записи.');
+  if(!incoming.has(id))throw Error('Не найден ожидаемый ID сохраняемой записи.');
+ }
+}
 const capabilities=Object.freeze({backend:'localStorage',schemaVersion:3,synchronous:true,atomicPrimaryWrite:true,crossTabCompareAndSwap:false,fileTransactions:false});
 
 const clone=x=>JSON.parse(JSON.stringify(x));
@@ -91,13 +135,14 @@ function create(storage,key,empty){
   },
   status:()=>({blocked,conflict,error,raw}),
   observe(event){if(event.key===key||event.key===null){if(event.newValue!==raw){conflict=true;return true}}return false},
-  commit(candidate,{importing=false}={}){
+  commit(candidate,{importing=false,recordChanges=[]}={}){
    try{
     if(blocked&&!importing)throw Error('База не загружена. Сначала восстановите резервную копию.');
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
     // Every successful save must be restorable with the same strict validator.
     // Reject dangling references rather than cascading away historical records.
     const next=validate(candidate);
+    checkRecordChanges(confirmed,next,recordChanges);
     protectClosedReports(confirmed,next);
     protectSalaryExpenses(confirmed,next,{importing});
     const history=[...(confirmed.financeHistory||[])];
@@ -640,5 +685,5 @@ function diagnoseRaw(raw){
   }
  return done(complete);
 }
-const api={diagnoseRaw,validate,create,createDataStore:create,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
+const api={diagnoseRaw,validate,create,createDataStore:create,createIdAllocator,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
 })(globalThis);
