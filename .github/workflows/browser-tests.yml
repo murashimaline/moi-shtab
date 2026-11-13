@@ -23,6 +23,9 @@ jobs:
       - run: node tests/browser-payroll.cjs
         env:
           BROWSER_CHANNEL: chromium
+      - run: node tests/browser-timesheet-batch.cjs
+        env:
+          BROWSER_CHANNEL: chromium
       - run: node tests/browser-finance.cjs
         env:
           BROWSER_CHANNEL: chromium
