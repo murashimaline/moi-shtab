@@ -1771,6 +1771,9 @@ function prepareTimesheetBatch(data,mode,targets,fields){
    if(editing&&String(next.hours)===String(old.hours))next.hours=old.hours;
    const changesTime=!editing||next.status!==old.status||next.hours!==old.hours;
    const hasHours=Object.hasOwn(fields,'hours');
+   if(editing&&next.status==='Отсутствовал'&&hasHours&&Number(fields.hours)!==0){
+    throw Error('Для отсутствия часы равны 0. Снимите флажок правки часов или выберите подходящий статус.');
+   }
    if(next.status!=='Отсутствовал'&&(changesTime||hasHours)){
     if(!(Number(next.hours)>0)||Number(next.hours)>24||(hasHours&&!Number.isInteger(Number(next.hours)*4))){
      throw Error('Для оплачиваемой смены укажите больше 0 и не больше 24 часов с шагом 0,25.');
@@ -1885,7 +1888,17 @@ function timesheetFormFields(){
  if(timesheetControl('Mode').value==='create'){
   return Object.fromEntries(['status','shiftType','hours','objectId','notes'].map(field=>[field,elements[field].value]));
  }
- return Object.fromEntries(timesheetPatchFields.filter(([field,toggle])=>elements[toggle].checked&&!elements[field].disabled).map(([field])=>[field,elements[field].value]));
+ const absent=elements.changeStatus.checked&&elements.status.value==='Отсутствовал';
+ const fields={};
+ for(const [field,toggle] of timesheetPatchFields){
+  const checked=elements[toggle].checked;
+  const derivedHours=field==='hours'&&absent;
+  if(elements[field].disabled!==(!checked||derivedHours)||(derivedHours&&elements.hours.value!=='0')){
+   throw Error('Флажки и поля правки рассинхронизированы. Проверьте выбранные поля заново.');
+  }
+  if(checked)fields[field]=elements[field].value;
+ }
+ return fields;
 }
 function timesheetSyncForm(){
  const editing=timesheetControl('Mode').value==='edit';
@@ -1894,9 +1907,9 @@ function timesheetSyncForm(){
  const {elements}=timesheetForm;
  timesheetControl('EditReason').hidden=!editing;
  elements.reason.disabled=!editing;
- const statusChanged=!elements.status.disabled;
- const absent=statusChanged&&elements.status.value==='Отсутствовал';
- if(editing&&timesheetWasAbsent&&statusChanged&&!absent)elements.changeHours.checked=true;
+ const statusSelected=!editing||elements.changeStatus.checked;
+ const absent=statusSelected&&elements.status.value==='Отсутствовал';
+ if(editing&&timesheetWasAbsent&&statusSelected&&!absent)elements.changeHours.checked=true;
  for(const [field,toggle] of timesheetPatchFields){
   elements[toggle].closest('label').hidden=!editing;
   elements[field].disabled=editing&&!elements[toggle].checked;
@@ -1906,7 +1919,7 @@ function timesheetSyncForm(){
   elements.hours.disabled=true;
  }else if(timesheetWasAbsent){
   const defaults={'Смена':'8','Половина смены':'4'};
-  if(statusChanged){
+  if(statusSelected){
    elements.hours.value=timesheetEnteredHours||defaults[elements.status.value]||'';
   }else{
    elements.hours.value=timesheetEnteredHours||elements.hours.defaultValue;

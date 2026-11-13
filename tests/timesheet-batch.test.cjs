@@ -85,6 +85,15 @@ test('correction recalculates hours and shifts without replacing IDs, historical
  assert.deepEqual(plain(absent.entries[0].next),{...old,status:'Отсутствовал',hours:0,shifts:0});
 });
 
+test('selected positive hours cannot silently disappear from an absence correction',()=>{
+ const old=row({status:'Отсутствовал',hours:0,shifts:0});
+ const db=data({attendance:[old]}),c=harness(db);
+ const plan=c.prepareTimesheetBatch(db,'edit',[editTarget(old)],{hours:'4',notes:'Уточнение'});
+ assert.match(plan.errors[0].message,/Для отсутствия часы равны 0/);
+ assert.deepEqual(plain(plan.entries),[]);
+ assert.deepEqual(db.attendance,[old]);
+});
+
 test('imported, missing-rate, absent-to-paid and stale shift edits are rejected',()=>{
  for(const [patch,message] of [
   [{importSourceKey:'legacy'},/Импортированная/],[{ratePerShift:null},/историческую ставку/],
