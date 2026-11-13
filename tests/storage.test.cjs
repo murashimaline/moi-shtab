@@ -58,7 +58,7 @@ test('financial calculations survive persistence unchanged, including opening ca
  x.payments=[{id:'p',workerId:'w',date:'2026-01-26',kind:'Аванс',amount:'500',paymentSource:'accountable'}];
  x.accountable=[{id:'c',date:'2026-01-01',kind:'receipt',amount:'5000'}];
  x.expenses=[{id:'e',date:'2026-01-27',amount:'200.25',paymentSource:'accountable'}];
- function calculate(db){const c=vm.createContext({db});
+ function calculate(db){const c=vm.createContext({db,ProrabkaStorage:require('../storage.js')});
   vm.runInContext(html.slice(html.indexOf('function wageCents'),html.indexOf('/* Finance extension')),c);
   vm.runInContext("const finRound=n=>Math.round((Number(n)||0)*100)/100;",c);
   vm.runInContext(html.slice(html.indexOf('function periodOK'),html.indexOf('function renderPayroll')),c);

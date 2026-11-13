@@ -350,9 +350,10 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
   <div class="fields">
    <div><label class="timesheet-change" hidden><input name="changeStatus" type="checkbox"> Изменить статус</label><label>Статус<select name="status"><option value="Смена">Полная смена</option><option value="Половина смены">Половина смены</option><option value="Часы">По часам</option><option value="Отсутствовал">Отсутствовал</option></select></label></div>
    <div id="timesheetBatchShift"><label>Время смены<select name="shiftType"><option value="unspecified">Не указано</option><option value="day">День</option><option value="night">Ночь</option></select></label></div>
-   <div><label class="timesheet-change" hidden><input name="changeHours" type="checkbox"> Изменить часы</label><label>Часы<input name="hours" type="number" min="0" max="24" step="0.25" value="8" required></label></div>
+   <div><label class="timesheet-change" hidden><input name="changeHours" type="checkbox"> Изменить часы</label><label>Часы<input name="hours" type="number" min="0.25" max="24" step="0.25" value="8" required></label></div>
    <div><label class="timesheet-change" hidden><input name="changeObjectId" type="checkbox"> Изменить объект</label><label>Объект<select name="objectId"></select></label></div>
    <div><label class="timesheet-change" hidden><input name="changeNotes" type="checkbox"> Изменить примечание</label><label>Примечание<input name="notes"></label></div>
+   <label id="timesheetEditReason" hidden>Основание исправления<input name="reason" required disabled></label>
   </div>
   <div class="actions">
    <button class="btn" id="timesheetBatchPreview" type="submit">Проверить выбранные смены</button>
@@ -366,6 +367,10 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
   <div class="actions"><button class="btn" id="timesheetBatchSave" type="button">Сохранить выбранные смены</button></div>
  </div>
  <div id="timesheetBatchResult" hidden></div>
+ <details id="timesheetEditHistory" hidden>
+  <summary>История массовых исправлений табеля</summary>
+  <div id="timesheetEditHistoryRows"></div>
+ </details>
 </div>
 <div class="panel" id="historicalRatePanel" hidden><h2>Зафиксировать историческую ставку</h2><form id="historicalRateForm"><input name="attendanceId" type="hidden"><p id="historicalRateRecord"></p><div class="fields"><label>Ставка этой смены, ₽<input name="rate" type="number" min="0" step="0.01" required></label><label>Основание уточнения<input name="reason" required placeholder="Договорённость, документ, дата ставки"></label></div><p class="notice">Изменится только ставка выбранной записи. Дата, статус, количество смен, штрафы, выплаты и происхождение сохранятся. После фиксации текущая ставка сотрудника не влияет на эту запись.</p><p id="historicalRatePreview" class="muted-small"></p><div class="actions"><button class="btn">Зафиксировать ставку</button><button class="btn secondary" type="button" id="historicalRateCancel">Отмена</button></div><p id="historicalRateStatus" role="status" aria-live="polite"></p></form></div>
 <div class="panel"><h2>Перенести подготовленный табель</h2><p class="muted-small">Загрузите JSON-файл переноса: сотрудники, смены, выплаченные суммы и штрафы. Сначала проверьте расчёт. Повторная загрузка того же файла не создаёт дублей.</p><label>Файл табеля<input id="timesheetImportFile" type="file" accept=".json,application/json"></label><div class="actions"><button id="timesheetPreview" class="btn secondary" type="button">Проверить файл</button><button id="timesheetApply" class="btn" type="button" disabled>Перенести данные</button><button id="timesheetBackup" class="btn secondary" type="button">Сохранить резервную копию</button></div><p id="timesheetImportStatus" role="status" aria-live="polite"></p><div id="timesheetImportPreview"></div><div id="timesheetReview"></div></div>
@@ -428,23 +433,9 @@ function wageCents(value){
  return Math.sign(n)*Number(cents);
 }
 function wageSum(values){return values.reduce((n,v)=>{const total=n+wageCents(v);if(!Number.isSafeInteger(total))throw Error('Денежная сумма слишком велика');return total},0)/100}
-function attendanceShifts(a){if(a.status==='Отсутствовал')return 0;if(a.status==='Половина смены')return 0.5;if(a.status==='Часы'&&a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24)return Number(a.hours)/8;return Number(a.shifts)||0}
+function attendanceShifts(a){return ProrabkaStorage.attendanceShifts(a)}
 function attendanceRate(a){return a.ratePerShift!=null&&a.ratePerShift!==''?a.ratePerShift:db.workers.find(w=>w.id===a.workerId)?.rate??0}
-// Multiply decimal operands before rounding; binary floating point can lose a half kopeck.
-function wageFraction(value){
- const n=Number(value);if(!Number.isFinite(n))throw Error('Некорректная денежная сумма');
- const [mantissa,exponent='0']=Math.abs(n).toString().split('e'),parts=mantissa.split('.');
- const scale=(parts[1]?.length||0)-Number(exponent),digits=BigInt(parts.join(''))*(n<0?-1n:1n);
- return scale>0?[digits,10n**BigInt(scale)]:[digits*10n**BigInt(-scale),1n];
-}
-function attendanceAmount(a){
- const hourly=a.status==='Часы'&&a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24;
- const [rate,rateScale]=wageFraction(attendanceRate(a)),[units,unitScale]=wageFraction(hourly?a.hours:attendanceShifts(a));
- const numerator=rate*units*100n,denominator=rateScale*unitScale*(hourly?8n:1n),absolute=numerator<0n?-numerator:numerator;
- const cents=(absolute*2n+denominator)/(2n*denominator);
- if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw Error('Денежная сумма слишком велика');
- return (numerator<0n?-1:1)*Number(cents)/100;
-}
+function attendanceAmount(a){return ProrabkaStorage.attendanceAccrualCents(a,attendanceRate(a))/100}
 function attendanceWarnings(a){
  const warnings=[];
  if(a.status!=='Отсутствовал'&&(a.ratePerShift==null||a.ratePerShift===''))warnings.push('Историческая ставка не зафиксирована; используется текущая ставка сотрудника');
@@ -1776,10 +1767,16 @@ function prepareTimesheetBatch(data,mode,targets,fields){
    for(const field of ['status','hours','objectId','notes'])if(Object.hasOwn(fields,field))next[field]=fields[field];
    if(!editing&&!['day','night','unspecified'].includes(next.shiftType))throw Error('Выберите время смены.');
    if(editing&&old.status==='Отсутствовал'&&next.status!=='Отсутствовал')throw Error('Замените отсутствие оплачиваемой сменой через индивидуальную форму.');
-   if(next.status!=='Отсутствовал'&&Object.hasOwn(fields,'hours')&&(fields.hours===''||!Number.isFinite(Number(fields.hours))||Number(fields.hours)<0||Number(fields.hours)>24||!Number.isInteger(Number(fields.hours)*4)))throw Error('Укажите часы от 0 до 24 с шагом 0,25.');
    if(next.objectId&&!data.objects.some(object=>object.id===next.objectId))throw Error('Объект отсутствует в базе.');
    if(editing&&String(next.hours)===String(old.hours))next.hours=old.hours;
-   if(!editing||next.status!==old.status||next.hours!==old.hours)Object.assign(next,attendanceStatusFields(next));
+   const changesTime=!editing||next.status!==old.status||next.hours!==old.hours;
+   const hasHours=Object.hasOwn(fields,'hours');
+   if(next.status!=='Отсутствовал'&&(changesTime||hasHours)){
+    if(!(Number(next.hours)>0)||Number(next.hours)>24||(hasHours&&!Number.isInteger(Number(next.hours)*4))){
+     throw Error('Для оплачиваемой смены укажите больше 0 и не больше 24 часов с шагом 0,25.');
+    }
+   }
+   if(changesTime)Object.assign(next,attendanceStatusFields(next));
    if(!editing)next.ratePerShift=snapshotAttendanceRate(next,worker);
    entries.push({old,next,before:old?attendanceAmount(old):0,after:attendanceAmount(next)});
   }catch(error){errors.push(describe(row,error.message));}
@@ -1796,13 +1793,23 @@ function prepareTimesheetBatch(data,mode,targets,fields){
  const payments=data.payments.filter(p=>workerIds.has(p.workerId)&&['Аванс','Выплата'].includes(p.kind));
  return {errors,entries:changed,payments,before:wageSum(changed.map(entry=>entry.before)),after:wageSum(changed.map(entry=>entry.after))};
 }
-function timesheetBatchCandidate(data,entries){
+function timesheetBatchCandidate(data,entries,reason=''){
  const allocateId=ProrabkaStorage.createIdAllocator(data.attendance);
+ const savedHistory=data.attendanceEditHistory||[];
+ const allocateHistoryId=ProrabkaStorage.createIdAllocator(savedHistory);
  const replacements=new Map(),added=[],recordChanges=[];
+ const events=[],at=new Date().toISOString();
  for(const {old,next} of entries){
   if(old){
+   if(JSON.stringify(old)===JSON.stringify(next))continue;
+   if(!reason.trim())throw Error('Укажите основание исправления табеля.');
    replacements.set(old.id,next);
    recordChanges.push({collection:'attendance',id:old.id,mode:'edit',previous:JSON.stringify(old)});
+   events.push({
+    id:allocateHistoryId(),at,attendanceId:old.id,workerId:old.workerId,reason:reason.trim(),
+    before:old,after:next,accruedBeforeCents:ProrabkaStorage.attendanceAccrualCents(old),
+    accruedAfterCents:ProrabkaStorage.attendanceAccrualCents(next)
+   });
   }else{
    const record={...next,id:allocateId()};
    added.push(record);
@@ -1810,7 +1817,9 @@ function timesheetBatchCandidate(data,entries){
   }
  }
  const attendance=[...data.attendance.map(row=>replacements.get(row.id)||row),...added];
- return {next:{...data,attendance},recordChanges};
+ const next={...data,attendance};
+ if(events.length)next.attendanceEditHistory=[...savedHistory,...events];
+ return {next,recordChanges};
 }
 
 const timesheetCalendar=document.getElementById('timesheetCalendar');
@@ -1819,6 +1828,8 @@ const timesheetForm=timesheetControl('BatchForm');
 const timesheetSelection=new Map();
 const timesheetPatchFields=[['status','changeStatus'],['hours','changeHours'],['objectId','changeObjectId'],['notes','changeNotes']];
 let timesheetPreviewState=null;
+let timesheetWasAbsent=false;
+let timesheetEnteredHours='';
 timesheetControl('Date').value=today();
 
 function timesheetPerson(id){
@@ -1881,14 +1892,27 @@ function timesheetSyncForm(){
  timesheetControl('BatchShift').hidden=editing;
  timesheetControl('EditHelp').hidden=!editing;
  const {elements}=timesheetForm;
+ timesheetControl('EditReason').hidden=!editing;
+ elements.reason.disabled=!editing;
+ const statusChanged=!elements.status.disabled;
+ const absent=statusChanged&&elements.status.value==='Отсутствовал';
+ if(editing&&timesheetWasAbsent&&statusChanged&&!absent)elements.changeHours.checked=true;
  for(const [field,toggle] of timesheetPatchFields){
   elements[toggle].closest('label').hidden=!editing;
   elements[field].disabled=editing&&!elements[toggle].checked;
  }
- if(!elements.status.disabled&&elements.status.value==='Отсутствовал'){
-  if(!editing)elements.hours.value='0';
+ if(absent){
+  elements.hours.value='0';
   elements.hours.disabled=true;
+ }else if(timesheetWasAbsent){
+  const defaults={'Смена':'8','Половина смены':'4'};
+  if(statusChanged){
+   elements.hours.value=timesheetEnteredHours||defaults[elements.status.value]||'';
+  }else{
+   elements.hours.value=timesheetEnteredHours||elements.hours.defaultValue;
+  }
  }
+ timesheetWasAbsent=absent;
 }
 function renderTimesheetCalendar(){
  if(timesheetPreviewState&&timesheetPreviewState.source!==db){
@@ -1921,7 +1945,15 @@ function renderTimesheetCalendar(){
  const empty='<p class="empty">Нет сотрудников для отображения.</p>';
  timesheetControl('WeekView').innerHTML=shown.length?'<table aria-label="Табель за неделю"><thead><tr><th scope="col">Сотрудник</th>'+week.map((day,index)=>'<th scope="col">'+weekdays[index]+' '+timesheetShortDate(day)+'</th>').join('')+'</tr></thead><tbody>'+shown.map(worker=>'<tr><th scope="row">'+esc(timesheetPerson(worker.id))+'</th>'+week.map(day=>'<td>'+cell(worker,day)+'</td>').join('')+'</tr>').join('')+'</tbody></table>':empty;
  timesheetControl('DayView').innerHTML='<div class="actions" aria-label="Дни недели">'+week.map((day,index)=>'<button class="btn small secondary" type="button" data-timesheet-day="'+esc(day)+'" aria-pressed="'+(day===date)+'"'+(timesheetDateInRange(day)?'':' disabled')+'>'+weekdays[index]+' '+timesheetShortDate(day)+'</button>').join('')+'</div>'+(shown.length?shown.map(worker=>'<div class="timesheet-day-worker"><strong>'+esc(timesheetPerson(worker.id))+'</strong>'+cell(worker,date)+'</div>').join(''):empty);
+ renderTimesheetEditHistory();
  timesheetUpdateSelection();
+}
+function renderTimesheetEditHistory(){
+ const history=db.attendanceEditHistory||[];
+ timesheetControl('EditHistory').hidden=!history.length;
+ const details=row=>'<pre style="white-space:pre-wrap;overflow-wrap:anywhere">'+esc(JSON.stringify(row,null,2))+'</pre>';
+ const rows=history.map(event=>'<tr><td>'+esc(event.at)+'</td><td>'+esc(timesheetPerson(event.workerId))+'</td><td>'+esc(event.before.date)+'</td><td>'+esc(event.reason)+'</td><td>'+money(event.accruedBeforeCents/100)+' → '+money(event.accruedAfterCents/100)+'</td><td><details><summary>До и после</summary><p>До</p>'+details(event.before)+'<p>После</p>'+details(event.after)+'</details></td></tr>');
+ timesheetControl('EditHistoryRows').innerHTML=history.length?table(['Время UTC','Сотрудник','Дата смены','Основание','Начисления','Снимки смены'],rows):'';
 }
 function timesheetSource(){
  const status=persistence.status(),raw=persistence.readRaw();
@@ -1929,7 +1961,7 @@ function timesheetSource(){
  return raw;
 }
 function timesheetDraftKey(){
- return JSON.stringify([timesheetControl('Mode').value,[...timesheetSelection.values()],timesheetFormFields()]);
+ return JSON.stringify([timesheetControl('Mode').value,[...timesheetSelection.values()],timesheetFormFields(),timesheetForm.elements.reason.value]);
 }
 function timesheetPreviewRows(plan){
  const details=row=>row?row.status+' · '+shiftLabel(row.shiftType)+' · '+(row.hours??'—')+' ч · '+objName(row.objectId)+(row.notes?' · '+row.notes:''):'—';
@@ -1944,6 +1976,8 @@ function timesheetPreviewRows(plan){
 function timesheetResetDraft(){
  timesheetSelection.clear();
  timesheetForm.reset();
+ timesheetWasAbsent=false;
+ timesheetEnteredHours='';
  timesheetClearFeedback();
  timesheetSyncForm();
  renderTimesheetCalendar();
@@ -1980,7 +2014,8 @@ timesheetCalendar.addEventListener('change',event=>{
  timesheetClearFeedback();
  timesheetUpdateSelection();
 });
-timesheetForm.addEventListener('input',()=>{
+timesheetForm.addEventListener('input',event=>{
+ if(event.target.name==='hours')timesheetEnteredHours=Number(event.target.value)>0?event.target.value:'';
  timesheetSyncForm();
  timesheetClearFeedback();
 });
@@ -1989,13 +2024,15 @@ timesheetForm.addEventListener('submit',event=>{
  timesheetClearFeedback();
  try{
   const raw=timesheetSource(),mode=timesheetControl('Mode').value;
+  const reason=timesheetForm.elements.reason.value.trim();
+  if(mode==='edit'&&!reason)throw Error('Укажите основание исправления табеля.');
   const plan=prepareTimesheetBatch(db,mode,[...timesheetSelection.values()],timesheetFormFields());
-  timesheetControl('BatchRows').innerHTML=timesheetPreviewRows(plan);
+  timesheetControl('BatchRows').innerHTML=(mode==='edit'?'<p>Основание исправления: '+esc(reason)+'</p>':'')+timesheetPreviewRows(plan);
   timesheetControl('BatchReview').hidden=false;
   const available=!plan.errors.length&&plan.entries.length>0;
   timesheetControl('BatchAckLabel').hidden=!available||mode!=='edit';
   timesheetControl('BatchSave').disabled=!available||mode==='edit';
-  if(available)timesheetPreviewState={raw,source:db,draft:timesheetDraftKey(),plan,mode};
+  if(available)timesheetPreviewState={raw,source:db,draft:timesheetDraftKey(),plan,mode,reason};
   else timesheetControl('BatchStatus').textContent=plan.errors.length?'Пакет содержит ошибки. Данные не сохранены.':'В выбранных сменах нет изменений.';
  }catch(error){timesheetControl('BatchStatus').textContent=error.message;}
 });
@@ -2012,9 +2049,9 @@ timesheetControl('BatchSave').addEventListener('click',()=>{
   if(timesheetSource()!==preview.raw||db!==preview.source||timesheetDraftKey()!==preview.draft){
    throw Error('Данные или черновик изменились. Проверьте смены заново.');
   }
-  const batch=timesheetBatchCandidate(db,preview.plan.entries);
+  const batch=timesheetBatchCandidate(db,preview.plan.entries,preview.reason);
   recordChanges=batch.recordChanges;
-  const result=persistence.commit(batch.next,{recordChanges});
+  const result=persistence.commit(batch.next,{recordChanges,attendanceBatch:true});
   if(!result.ok)throw Error(result.error);
   db=result.value;
  }catch(error){
