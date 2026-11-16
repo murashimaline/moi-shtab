@@ -62,6 +62,126 @@ const capabilities=Object.freeze({backend:'localStorage',schemaVersion:3,synchro
 const clone=x=>JSON.parse(JSON.stringify(x));
 const object=x=>x!==null&&typeof x==='object'&&!Array.isArray(x);
 const validDate=v=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(v)&&Number.isFinite(Date.parse(v))&&new Date(v).toISOString().slice(0,10)===v;
+ const validId=v=>typeof v==='string'&&/^[a-zA-Z0-9_-]+$/.test(v);
+ function attendanceShifts(a){
+  if(a.status==='Отсутствовал')return 0;
+  if(a.status==='Половина смены')return 0.5;
+  if(a.status==='Часы'&&a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24)return Number(a.hours)/8;
+  return Number(a.shifts)||0;
+ }
+ // Multiply decimal operands before rounding to an integer number of kopecks.
+ function wageFraction(value){
+  const n=Number(value);if(!Number.isFinite(n))throw Error('Некорректная денежная сумма');
+  const [mantissa,exponent='0']=Math.abs(n).toString().split('e'),parts=mantissa.split('.');
+  const scale=(parts[1]?.length||0)-Number(exponent),digits=BigInt(parts.join(''))*(n<0?-1n:1n);
+  return scale>0?[digits,10n**BigInt(scale)]:[digits*10n**BigInt(-scale),1n];
+ }
+ function attendanceAccrualCents(a,rate=a.ratePerShift){
+  const hourly=a.status==='Часы'&&a.hours!==''&&a.hours!=null&&Number(a.hours)>0&&Number(a.hours)<=24;
+  const [rateValue,rateScale]=wageFraction(rate),[units,unitScale]=wageFraction(hourly?a.hours:attendanceShifts(a));
+  const numerator=rateValue*units*100n,denominator=rateScale*unitScale*(hourly?8n:1n),absolute=numerator<0n?-numerator:numerator;
+  const cents=(absolute*2n+denominator)/(2n*denominator);
+  if(cents>BigInt(Number.MAX_SAFE_INTEGER))throw Error('Денежная сумма слишком велика');
+  return (numerator<0n?-1:1)*Number(cents);
+ }
+ const attendanceEditFields=new Set(['status','hours','shifts','objectId','notes']);
+ function sameJson(a,b){
+  const ordered=value=>JSON.stringify(value,(_,item)=>object(item)?Object.fromEntries(Object.keys(item).sort().map(key=>[key,item[key]])):item);
+  return ordered(a)===ordered(b);
+ }
+ function validateAttendanceEditHistory(history,fail){
+  const path='attendanceEditHistory';
+  if(!Array.isArray(history))fail(path);
+  const ids=new Set();
+  for(const [index,event] of history.entries()){
+   const entry=path+'['+index+']';
+   if(!object(event)||Object.keys(event).length!==9||!validId(event.id)||ids.has(event.id))fail(entry+'.id');
+   ids.add(event.id);
+   const {at,attendanceId,workerId,reason,before,after,accruedBeforeCents,accruedAfterCents}=event;
+   if(typeof at!=='string'||!Number.isFinite(Date.parse(at))||new Date(at).toISOString()!==at)fail(entry+'.at');
+   if(!validId(attendanceId)||!validId(workerId)||typeof reason!=='string'||!reason.trim())fail(entry);
+   for(const [field,snapshot,amount] of [['before',before,accruedBeforeCents],['after',after,accruedAfterCents]]){
+    const snapshotPath=entry+'.'+field;
+    if(!object(snapshot)||snapshot.id!==attendanceId||snapshot.workerId!==workerId||
+       snapshot.ratePerShift==null||snapshot.ratePerShift===''||snapshot.importSourceKey)fail(snapshotPath);
+    validateRecord('attendance',snapshot,snapshotPath,fail,field==='after');
+    JSON.stringify(snapshot,(key,value)=>{
+     if(key==='attendanceEditHistory'||key==='financeHistory')fail(snapshotPath+'.'+key);
+     return value;
+    });
+    let calculated;
+    try{calculated=attendanceAccrualCents(snapshot);}catch{fail(entry+'.'+field+'Accrual');}
+    if(!Number.isSafeInteger(amount)||amount<0||amount!==calculated)fail(entry+'.'+field+'Accrual');
+   }
+   const protectedFields=row=>Object.fromEntries(Object.entries(row).filter(([key])=>!attendanceEditFields.has(key)));
+   if(sameJson(before,after)||!sameJson(protectedFields(before),protectedFields(after)))fail(entry+'.snapshots');
+   if(before.status!==after.status||before.hours!==after.hours||before.shifts!==after.shifts){
+    const hours=Number(after.hours),absent=after.status==='Отсутствовал';
+    if(!['Смена','Половина смены','Часы','Отсутствовал'].includes(after.status)||
+       (before.status==='Отсутствовал'&&!absent)||(absent?after.hours!==0:!(hours>0&&hours<=24))){
+     fail(entry+'.after.hours');
+    }
+    const shifts=after.status==='Смена'?1:attendanceShifts(after);
+    if(after.shifts!==shifts)fail(entry+'.after.shifts');
+   }
+  }
+ }
+ function preserveAttendanceEditHistory(confirmed,next,{importing,recordChanges,attendanceBatch}){
+  const saved=confirmed.attendanceEditHistory||[],incoming=next.attendanceEditHistory||[];
+  if(importing){
+   const existing=new Map(saved.map(event=>[event.id,event])),added=[];
+   for(const event of incoming){
+    const previous=existing.get(event.id);
+    if(previous&&!sameJson(previous,event))throw Error('Конфликт ID в истории исправлений табеля: '+event.id);
+    if(!previous)added.push(event);
+   }
+   if(saved.length||next.attendanceEditHistory!==undefined)next.attendanceEditHistory=[...saved,...added];
+   return;
+  }
+  if(saved.some((event,index)=>!sameJson(event,incoming[index])))throw Error('Нельзя удалять или переписывать историю исправлений табеля.');
+  const added=incoming.slice(saved.length);
+  if(!attendanceBatch){
+   if(added.length)throw Error('История исправлений сохраняется только вместе с массовой правкой табеля.');
+   return;
+  }
+  const before=new Map(confirmed.attendance.map(row=>[row.id,row])),after=new Map(next.attendance.map(row=>[row.id,row]));
+  const edits=new Set(recordChanges.filter(change=>change.collection==='attendance'&&change.mode==='edit').map(change=>change.id));
+  const edited=new Set();
+  for(const [id,row] of before){
+   if(JSON.stringify(row)===JSON.stringify(after.get(id)))continue;
+   if(!after.has(id)||!edits.has(id))throw Error('В пакете табеля обнаружено изменение без явной правки.');
+   edited.add(id);
+  }
+  for(const event of added){
+   if(!edited.delete(event.attendanceId)||!sameJson(event.before,before.get(event.attendanceId))||!sameJson(event.after,after.get(event.attendanceId))){
+    throw Error('Событие истории не соответствует сохраняемой правке табеля.');
+   }
+  }
+  if(edited.size)throw Error('Не для всех исправлений табеля подготовлена история.');
+ }
+function validateRecord(k,r,path,fail,links){
+ for(const [key,v] of Object.entries(r)){
+  if(['name','title','notes','address','manager','trade','phone','objectId','workerId','itemId','status','kind','assignee','category','vendor','source','paymentSource','shiftType','importSourceKey','importFingerprint','serial','unit','condition','adjustmentReason','objectName','sourceFile'].includes(key)&&v!=null&&typeof v!=='string')fail(path+'.'+key);
+  if(['photos','workerIds','sourceKeys'].includes(key)){if(!Array.isArray(v)||v.some(s=>typeof s!=='string'))fail(path+'.'+key)}
+  else if(['receipts','substeps','review'].includes(key)){if(!Array.isArray(v)||v.some(s=>!object(s)))fail(path+'.'+key)}
+  else if(v!==null&&!['string','number','boolean'].includes(typeof v))fail(path+'.'+key);
+  if(['amount','rate','ratePerShift','shifts','hours','fine','deduction','qty','baseQty','workersCount'].includes(key)&&v!==null&&(typeof v!=='number'&&typeof v!=='string'||!Number.isFinite(Number(v))||Number(v)<0))fail(path+'.'+key);
+  if(['date','due','start','end'].includes(key)&&v!==''&&v!=null&&(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)||!Number.isFinite(Date.parse(v))||new Date(v).toISOString().slice(0,10)!==v))fail(path+'.'+key);
+ }
+ if(['works','attendance','payments','expenses','income','accountable','warehouseMovements'].includes(k)&&!validDate(r.date))fail(path+'.date');
+ if(k==='schedule'&&(!validDate(r.start)||!validDate(r.end)||r.end<r.start))fail(path+'.start/end');
+ if(links){
+  if(k==='attendance'&&(r.shifts==null||r.shifts===''||!Number.isFinite(Number(r.shifts))))fail(path+'.shifts');
+  if(['payments','expenses','income','accountable'].includes(k)&&(r.amount==null||r.amount===''||!(Number(r.amount)>0)))fail(path+'.amount');
+  if(k==='payments'&&!['Аванс','Выплата','Штраф','Удержание'].includes(r.kind))fail(path+'.kind');
+  if(k==='accountable'&&!['receipt','return'].includes(r.kind))fail(path+'.kind');
+  if(k==='warehouseMovements'&&(!['issue','return','restock','writeoff'].includes(r.kind)||!(Number(r.qty)>0)))fail(path+'.kind/qty');
+ }
+ for(const field of (['objects','workers','warehouse'].includes(k)?['name']:['tasks','schedule'].includes(k)?['title']:[]))if(typeof r[field]!=='string'||!r[field].trim())fail(path+'.'+field);
+ for(const receipt of r.receipts||[])if(typeof receipt.data!=='string'||typeof receipt.name!=='string'||receipt.verified!==undefined&&typeof receipt.verified!=='boolean')fail(path+'.receipts');
+ for(const s of r.substeps||[])if(typeof s.title!=='string'||!s.title.trim()||!validDate(s.start)||!validDate(s.end)||s.end<s.start||Object.values(s).some(v=>typeof v!=='string'))fail(path+'.substeps');
+ for(const row of r.review||[])if(!validDate(row.date)||['sheet','cell','workerName','reason'].some(key=>typeof row[key]!=='string')||!['string','number'].includes(typeof row.rawValue))fail(path+'.review');
+}
 function validate(data,{links=true}={}){
  const fail=path=>{throw Error('Некорректные данные: '+path)};
  if(!object(data)||data.version!==3)fail('неподдерживаемая версия базы');
@@ -73,30 +193,11 @@ function validate(data,{links=true}={}){
   const ids=new Set();
   for(const [i,r] of next[k].entries()){
    const path=k+'['+i+']';
-   if(!object(r)||typeof r.id!=='string'||!r.id||! /^[a-zA-Z0-9_-]+$/.test(r.id)||ids.has(r.id))fail(path+'.id');ids.add(r.id);
-   for(const [key,v] of Object.entries(r)){
-    if(['name','title','notes','address','manager','trade','phone','objectId','workerId','itemId','status','kind','assignee','category','vendor','source','paymentSource','shiftType','importSourceKey','importFingerprint','serial','unit','condition','adjustmentReason','objectName','sourceFile'].includes(key)&&v!=null&&typeof v!=='string')fail(path+'.'+key);
-    if(['photos','workerIds','sourceKeys'].includes(key)){if(!Array.isArray(v)||v.some(s=>typeof s!=='string'))fail(path+'.'+key)}
-    else if(['receipts','substeps','review'].includes(key)){if(!Array.isArray(v)||v.some(s=>!object(s)))fail(path+'.'+key)}
-    else if(v!==null&&!['string','number','boolean'].includes(typeof v))fail(path+'.'+key);
-    if(['amount','rate','ratePerShift','shifts','hours','fine','deduction','qty','baseQty','workersCount'].includes(key)&&v!==null&&(typeof v!=='number'&&typeof v!=='string'||!Number.isFinite(Number(v))||Number(v)<0))fail(path+'.'+key);
-    if(['date','due','start','end'].includes(key)&&v!==''&&v!=null&&(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)||!Number.isFinite(Date.parse(v))||new Date(v).toISOString().slice(0,10)!==v))fail(path+'.'+key);
-   }
-   if(['works','attendance','payments','expenses','income','accountable','warehouseMovements'].includes(k)&&!validDate(r.date))fail(path+'.date');
-   if(k==='schedule'&&(!validDate(r.start)||!validDate(r.end)||r.end<r.start))fail(path+'.start/end');
-   if(links){
-    if(k==='attendance'&&(r.shifts==null||r.shifts===''||!Number.isFinite(Number(r.shifts))))fail(path+'.shifts');
-    if(['payments','expenses','income','accountable'].includes(k)&&(r.amount==null||r.amount===''||!(Number(r.amount)>0)))fail(path+'.amount');
-    if(k==='payments'&&!['Аванс','Выплата','Штраф','Удержание'].includes(r.kind))fail(path+'.kind');
-    if(k==='accountable'&&!['receipt','return'].includes(r.kind))fail(path+'.kind');
-    if(k==='warehouseMovements'&&(!['issue','return','restock','writeoff'].includes(r.kind)||!(Number(r.qty)>0)))fail(path+'.kind/qty');
-   }
-   for(const field of (['objects','workers','warehouse'].includes(k)?['name']:['tasks','schedule'].includes(k)?['title']:[]))if(typeof r[field]!=='string'||!r[field].trim())fail(path+'.'+field);
-   for(const receipt of r.receipts||[])if(typeof receipt.data!=='string'||typeof receipt.name!=='string'||receipt.verified!==undefined&&typeof receipt.verified!=='boolean')fail(path+'.receipts');
-   for(const s of r.substeps||[])if(typeof s.title!=='string'||!s.title.trim()||!validDate(s.start)||!validDate(s.end)||s.end<s.start||Object.values(s).some(v=>typeof v!=='string'))fail(path+'.substeps');
-   for(const row of r.review||[])if(!validDate(row.date)||['sheet','cell','workerName','reason'].some(key=>typeof row[key]!=='string')||!['string','number'].includes(typeof row.rawValue))fail(path+'.review');
+   if(!object(r)||!validId(r.id)||ids.has(r.id))fail(path+'.id');ids.add(r.id);
+   validateRecord(k,r,path,fail,links);
   }
  }
+ if(next.attendanceEditHistory!==undefined)validateAttendanceEditHistory(next.attendanceEditHistory,fail);
  if(next.advanceReports===undefined)next.advanceReports={};
  if(!object(next.advanceReports))fail('advanceReports');
  if(next.financeHistory!==undefined&&(!Array.isArray(next.financeHistory)||next.financeHistory.some(r=>!object(r)||['at','collection','id','action','before','after'].some(k=>typeof r[k]!=='string'))))fail('financeHistory');
@@ -135,7 +236,7 @@ function create(storage,key,empty){
   },
   status:()=>({blocked,conflict,error,raw}),
   observe(event){if(event.key===key||event.key===null){if(event.newValue!==raw){conflict=true;return true}}return false},
-  commit(candidate,{importing=false,recordChanges=[]}={}){
+  commit(candidate,{importing=false,recordChanges=[],attendanceBatch=false}={}){
    try{
     if(blocked&&!importing)throw Error('База не загружена. Сначала восстановите резервную копию.');
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
@@ -143,6 +244,7 @@ function create(storage,key,empty){
     // Reject dangling references rather than cascading away historical records.
     const next=validate(candidate);
     checkRecordChanges(confirmed,next,recordChanges);
+    preserveAttendanceEditHistory(confirmed,next,{importing,recordChanges,attendanceBatch});
     protectClosedReports(confirmed,next);
     protectSalaryExpenses(confirmed,next,{importing});
     const history=[...(confirmed.financeHistory||[])];
@@ -685,5 +787,5 @@ function diagnoseRaw(raw){
   }
  return done(complete);
 }
-const api={diagnoseRaw,validate,create,createDataStore:create,createIdAllocator,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
+const api={diagnoseRaw,validate,create,createDataStore:create,createIdAllocator,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses,attendanceShifts,attendanceAccrualCents};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
 })(globalThis);
