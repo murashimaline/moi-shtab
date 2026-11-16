@@ -20,6 +20,9 @@ jobs:
       - run: node tests/browser-record-ids.cjs
         env:
           BROWSER_CHANNEL: chromium
+      - run: node tests/browser-object-manager.cjs
+        env:
+          BROWSER_CHANNEL: chromium
       - run: node tests/browser-payroll.cjs
         env:
           BROWSER_CHANNEL: chromium

@@ -270,7 +270,33 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 <div class="panel"><div class="section-kicker">Аналитика</div><h3>Объекты, финансы, материалы и команда</h3><div class="analytics-details" id="extraAnalytics"></div></div>
 <div class="panel"><div class="section-kicker">Инвентарь</div><h2>Склад и инструменты</h2><div class="stats" id="warehouseHomeStats"></div><div class="actions"><button class="btn secondary" data-goto="warehouse" type="button">Открыть склад →</button></div></div></section>
 <section class="page" id="page-objects"><div class="panel workspace-hero" id="objectWorkspacePanel"><div class="section-kicker">Рабочее пространство объекта</div><h2>Выберите объект</h2><p class="muted-small">Сначала выберите объект. Затем можно вести его задачи, журнал работ и календарный график.</p><div class="workspace-row"><label>Текущий объект<select id="workspaceObjectSelect"><option value="">Выберите объект</option></select></label><div class="workspace-badge" id="currentObjectBadge">Объект не выбран</div></div><div class="workspace-actions"><button class="btn" data-object-go="tasks" type="button">Задачи →</button><button class="btn secondary" data-object-go="works" type="button">Журнал работ →</button><button class="btn secondary" data-object-go="schedule" type="button">График работ →</button></div><div class="workspace-summary" id="workspaceSummary"></div></div>
-<div class="panel"><h2>Объекты</h2><form id="objectForm"><input name="id" type="hidden"/><div class="fields"><label>Название объекта *<input name="name" placeholder="Например, ЖК Северный" required=""/></label><label>Адрес<input name="address" placeholder="Адрес или участок"/></label><label>Ответственный<input name="manager" placeholder="ФИО"/></label></div><label style="margin-top:10px">Примечание<textarea name="notes" placeholder="Особенности объекта"></textarea></label><div class="actions"><button class="btn">Сохранить объект</button><button class="btn secondary" onclick="resetForm('objectForm')" type="button">Очистить</button></div></form></div>
+<div class="panel"><h2>Объекты</h2><form id="objectForm"><input name="id" type="hidden"/><div class="fields"><label>Название объекта *<input name="name" placeholder="Например, ЖК Северный" required=""/></label><label>Адрес<input name="address" placeholder="Адрес или участок"/></label><div>
+ <label>Поиск ответственного<input id="objectManagerSearch" type="search" placeholder="Фамилия или часть ФИО" autocomplete="off"></label>
+ <label>Выбрать сотрудника<select id="objectManagerPicker"></select></label>
+ <input type="hidden" name="managerChoice">
+ <p id="objectManagerSelection" role="status"></p>
+ <p class="muted-small" id="objectManagerLegacy" hidden></p>
+ <p class="muted-small" id="objectManagerCompatibility" hidden>Старая версия ПРОРАБКИ может потерять назначение при правке объекта. Перед откатом скачайте проверенную JSON-копию.</p>
+ <button class="btn secondary small" id="objectManagerClear" type="button">Снять назначение</button>
+</div></div><label style="margin-top:10px">Примечание<textarea name="notes" placeholder="Особенности объекта"></textarea></label><div class="actions"><button class="btn">Сохранить объект</button><button class="btn secondary" onclick="resetForm('objectForm')" type="button">Очистить</button></div></form></div>
+<div class="panel" id="managerRepairPanel" hidden>
+ <h3>Исправление назначений</h3>
+ <p id="managerRepairSummary"></p>
+ <button class="btn secondary" id="managerRepairStart" type="button">Подготовить исправление</button>
+ <div id="managerRepairDraft" hidden>
+  <p>Выберите действие для каждого объекта. Изменения сохраняются вместе.</p>
+  <div id="managerRepairRows"></div>
+  <button class="btn secondary" id="managerRepairDownload" type="button">Скачать исходный JSON до исправления</button>
+  <p class="muted-small">Это исходная копия с разорванными ссылками. Чтобы подтвердить её сохранение, выберите скачанный файл.</p>
+  <label>Подтвердить исходную копию<input id="managerRepairFile" type="file" accept=".json,application/json"></label>
+  <p id="managerRepairStatus" role="status"></p>
+  <div class="actions">
+   <button class="btn" id="managerRepairApply" type="button" disabled>Сохранить все исправления</button>
+   <button class="btn secondary" id="managerRepairCancel" type="button">Отмена</button>
+  </div>
+ </div>
+</div>
+<div class="panel" id="managerRepairResult" role="status" hidden></div>
 <div class="panel"><h3>Список объектов</h3><div id="objectList"></div></div>
 </section>
 <section class="page" id="page-tasks"><div class="object-context"><span>Задачи объекта: <strong class="active-object-label">Объект не выбран</strong></span><button class="btn secondary small" data-goto="objects" type="button">Сменить объект</button></div>
@@ -775,9 +801,15 @@ function saveRecord(collection,record,target){
  db={...db,[collection]:db[collection].map(row=>row.id===target.id?record:row)};
  return save({recordChanges});
 }
-function resetForm(id){formEdits.delete(id);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm')document.getElementById('substepsEditor').innerHTML='';if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
-function setForm(id,record){rememberEdit(id,record);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm')renderSubstepEditor(record.substeps||[]);if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';f.scrollIntoView({behavior:'smooth',block:'start'})}
-function removeItem(collection,id){if(confirm('Удалить эту запись?')){db[collection]=db[collection].filter(x=>x.id!==id);save()}}
+function resetForm(id){formEdits.delete(id);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm')document.getElementById('substepsEditor').innerHTML='';if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(id==='objectForm'){f.elements.managerChoice.value='';renderObjectManagerPicker();}if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
+function setForm(id,record){rememberEdit(id,record);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm')renderSubstepEditor(record.substeps||[]);if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';if(id==='objectForm'){f.elements.managerChoice.value='';document.getElementById('objectManagerSearch').value='';renderObjectManagerPicker();}f.scrollIntoView({behavior:'smooth',block:'start'})}
+function removeItem(collection,id){
+ if(collection==='workers'){
+  const linked=db.objects.filter(object=>object.managerId===id);
+  if(linked.length){alert('Сотрудник назначен ответственным за объекты: '+linked.map(object=>object.name).join(', ')+'. Сначала переназначьте или снимите ответственного.');return;}
+ }
+ if(confirm('Удалить эту запись?')){db={...db,[collection]:db[collection].filter(x=>x.id!==id)};save()}
+}
 function table(headers,rows){if(!rows.length)return '<div class="empty">Записей пока нет.</div>';return '<div class="table-wrap"><table><thead><tr>'+headers.map(h=>'<th>'+h+'</th>').join('')+'</tr></thead><tbody>'+rows.join('')+'</tbody></table></div>'}
 function actionBtns(coll,x,form){const closed=['accountable','expenses','payments'].includes(coll)&&Object.keys(db.advanceReports||{}).find(m=>db.advanceReports[m].status==='approved'&&x.date<=m+'-31');if(closed)return '<span class="tag">Закрыто: '+esc(closed)+'</span>';return `<button class="btn small secondary" onclick="editItem('${coll}','${x.id}','${form}')">Изменить</button> <button class="btn small danger" onclick="removeItem('${coll}','${x.id}')">Удалить</button>`}
 function editItem(coll,id,form){const x=db[coll].find(a=>a.id===id);if(x){if(form==='paymentForm')showPage('payroll');else if(form==='expenseForm'||form==='accountableForm'||form==='incomeForm')showPage('finance');setForm(form,x)}}
@@ -785,7 +817,19 @@ function refreshSelects(){const picker=document.getElementById('workWorkerPicker
  document.querySelectorAll('.object-select').forEach(s=>{const val=s.value;const isAll=s.id==='reportObject'||s.id==='financeObject'||s.id==='expenseObjectFilter';s.innerHTML=(isAll?'<option value="">Все объекты</option>':'<option value="">Без объекта</option>')+db.objects.map(o=>`<option value="${esc(o.id)}">${esc(o.name)}</option>`).join('');s.value=val});
  document.querySelectorAll('.worker-select').forEach(s=>{const val=s.value;s.innerHTML='<option value="">Выберите рабочего</option>'+db.workers.map(w=>`<option value="${esc(w.id)}">${esc(w.name)}</option>`).join('');s.value=val});
 }
-function renderObjects(){document.getElementById('objectList').innerHTML=table(['Объект','Адрес','Ответственный','Примечание','Действия'],db.objects.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.address)}</td><td>${esc(x.manager)}</td><td>${esc(x.notes)}</td><td>${actionBtns('objects',x,'objectForm')}</td></tr>`))}
+function objectManagerLabel(object){
+ if(object?.managerId===null)return 'Не назначен';
+ if(object?.managerId){
+  const worker=db.workers.find(row=>row.id===object.managerId);
+  return worker?worker.name:'Ответственный недоступен ('+object.managerId+')';
+ }
+ return object?.manager?'Старая запись: '+object.manager:'Не назначен';
+}
+function renderObjects(){
+ document.getElementById('objectList').innerHTML=table(['Объект','Адрес','Ответственный','Примечание','Действия'],db.objects.map(x=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.address)}</td><td>${esc(objectManagerLabel(x))}</td><td>${esc(x.notes)}</td><td>${actionBtns('objects',x,'objectForm')}</td></tr>`));
+ renderObjectManagerPicker();
+ renderManagerRepair();
+}
 function renderTasks(){const list=[...db.tasks].filter(x=>!activeObjectId||x.objectId===activeObjectId).sort((a,b)=>(a.due||'').localeCompare(b.due||''));document.getElementById('taskList').innerHTML=table(['Задача','Объект','Срок','Статус','Ответственный','Действия'],list.map(x=>{const overdue=x.status!=='Выполнена'&&x.due&&x.due<today();return `<tr><td>${esc(x.title)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.due||'—')} ${overdue?'<span class="tag bad">Просрочена</span>':''}</td><td><span class="tag ${x.status==='Выполнена'?'ok':x.status==='В работе'?'warn':''}">${esc(x.status)}</span></td><td>${esc(x.assignee)}</td><td>${actionBtns('tasks',x,'taskForm')}</td></tr>`}).reverse())}
 function renderWorks(){document.getElementById('workList').innerHTML=table(['Дата','Объект','Вид работ','Объём','Материалы','Рабочих','Фото','Заметки','Действия'],[...db.works].filter(x=>!activeObjectId||x.objectId===activeObjectId).sort((a,b)=>b.date.localeCompare(a.date)).map(x=>`<tr><td>${esc(x.date)}</td><td>${esc(objName(x.objectId))}</td><td>${esc(x.title)}</td><td>${esc(x.volume)}</td><td>${esc(x.materials)}</td><td>${esc(x.workersCount||'—')}${x.workerIds?.length?'<div>'+x.workerIds.map(workerName).map(esc).join(', ')+'</div>':''}</td><td>${(x.photos||[]).map((ph,i)=>`<a href="${ph}" target="_blank" rel="noopener">Фото ${i+1}</a>`).join(', ')||'—'}</td><td>${esc(x.notes)}</td><td>${actionBtns('works',x,'workForm')}</td></tr>`))}
 function renderWorkers(){document.getElementById('workerList').innerHTML=table(['Рабочий','Профессия','Ставка за смену','Телефон','Действия'],db.workers.map(x=>`<tr><td>${esc(x.name)}</td><td>${esc(x.trade)}</td><td>${x.rate==null?'<span class="tag warn">Не указана</span>':money(x.rate)}</td><td>${esc(x.phone)}</td><td>${actionBtns('workers',x,'workerForm')}</td></tr>`))}
@@ -997,7 +1041,22 @@ function submitCollection(formId,collection){
   let record=formData(event.currentTarget);
   if(formId==='taskForm'&&activeObjectId)record.objectId=activeObjectId;
   try{
-   const {target}=prepareFormRecord(formId,collection,record);
+   const {target,old}=prepareFormRecord(formId,collection,record);
+   if(collection==='objects'){
+    const {managerChoice}=record;
+    if(old?.managerId&&managerChoice&&!db.workers.some(worker=>worker.id===old.managerId)){
+     throw Error('Разорванное назначение исправляется через «Исправление назначений» с копией исходного JSON.');
+    }
+    const values=Object.fromEntries(Object.entries(record).filter(([field])=>['id','name','address','notes'].includes(field)));
+    record={...old,...values};
+    if(managerChoice==='@clear')record.managerId=null;
+    else if(managerChoice){
+     const worker=db.workers.find(row=>row.id===managerChoice);
+     if(!worker)throw Error('Выбранный сотрудник отсутствует в справочнике.');
+     record.managerId=worker.id;
+     if(!old)record.manager=worker.name;
+    }
+   }
    if(collection==='attendance')record=prepareManualAttendance(record);
    if(saveRecord(collection,record,target))resetForm(formId);
   }catch(error){alert(error.message)}
@@ -1578,6 +1637,132 @@ document.getElementById('workersImportButton').addEventListener('click',async()=
 });
 
 initFinanceUpgrade();
+const objectManagerSearch=document.getElementById('objectManagerSearch');
+const objectManagerPicker=document.getElementById('objectManagerPicker');
+const objectManagerChoice=document.getElementById('objectForm').elements.managerChoice;
+function managerOptions(query=''){
+ const filter=query.trim().toLocaleLowerCase('ru');
+ return db.workers.filter(worker=>worker.name.toLocaleLowerCase('ru').includes(filter)).map(worker=>
+  new Option([worker.name,worker.trade,worker.id].filter(Boolean).join(' · '),worker.id));
+}
+function renderObjectManagerPicker(){
+ const id=formEdits.get('objectForm')?.id;
+ const saved=db.objects.find(object=>object.id===id);
+ const choice=objectManagerChoice.value;
+ const picked=choice?{managerId:choice==='@clear'?null:choice}:saved;
+ const broken=saved?.managerId&&!db.workers.some(worker=>worker.id===saved.managerId);
+ const options=managerOptions(objectManagerSearch.value);
+ objectManagerPicker.replaceChildren(new Option(options.length?'Выберите сотрудника':'Сотрудники не найдены',''),...options);
+ objectManagerPicker.disabled=objectManagerSearch.disabled=Boolean(broken);
+ document.getElementById('objectManagerSelection').textContent=objectManagerLabel(picked)+(broken?' · Используйте «Исправление назначений».':'');
+ document.getElementById('objectManagerCompatibility').hidden=!choice&&!(saved&&Object.hasOwn(saved,'managerId'));
+ document.getElementById('objectManagerClear').disabled=Boolean(broken)||picked?.managerId===null||(!picked?.managerId&&!saved?.manager);
+ const legacy=document.getElementById('objectManagerLegacy');
+ legacy.textContent=saved?.manager?'Прежний текст: '+saved.manager:'';
+ legacy.hidden=!saved?.manager||picked===saved&&!Object.hasOwn(saved,'managerId');
+}
+objectManagerSearch.addEventListener('input',renderObjectManagerPicker);
+objectManagerPicker.addEventListener('change',()=>{
+ if(objectManagerPicker.value)objectManagerChoice.value=objectManagerPicker.value;
+ renderObjectManagerPicker();
+});
+document.getElementById('objectManagerClear').onclick=()=>{
+ objectManagerChoice.value='@clear';
+ renderObjectManagerPicker();
+};
+
+const managerRepairControl=id=>document.getElementById('managerRepair'+id);
+let managerRepair=null;
+function brokenManagerObjects(){
+ const workerIds=new Set(db.workers.map(worker=>worker.id));
+ return db.objects.filter(object=>object.managerId!=null&&!workerIds.has(object.managerId));
+}
+function renderManagerRepair(){
+ const broken=brokenManagerObjects();
+ managerRepairControl('Panel').hidden=!broken.length&&!managerRepair;
+ managerRepairControl('Summary').textContent='Разорванных назначений: '+broken.length;
+}
+function managerRepairSource(){
+ const {raw,blocked,conflict}=persistence.status();
+ if(blocked||conflict||raw===null||persistence.readRaw()!==raw)throw Error('Исходная база изменилась или недоступна. Перезагрузите страницу.');
+ return raw;
+}
+function resetManagerRepair(){
+ managerRepair=null;
+ managerRepairControl('Draft').hidden=true;
+ managerRepairControl('Start').hidden=false;
+ managerRepairControl('File').value='';
+ managerRepairControl('Apply').disabled=true;
+ managerRepairControl('Status').textContent='';
+ managerRepairControl('Rows').replaceChildren();
+ renderManagerRepair();
+}
+managerRepairControl('Start').onclick=()=>{
+ try{
+  const raw=managerRepairSource(),objects=brokenManagerObjects();
+  if(!objects.length)return;
+  const rows=objects.map(object=>{
+   const label=document.createElement('label');
+   label.textContent=object.name+' · отсутствует сотрудник '+object.managerId;
+   const select=document.createElement('select');
+   select.replaceChildren(new Option('Выберите действие',''),new Option('Снять назначение','@clear'),...managerOptions());
+   select.addEventListener('change',updateManagerRepair);
+   label.append(select);
+   return {object,select,label};
+  });
+  managerRepair={raw,rows,verified:false};
+  managerRepairControl('Rows').replaceChildren(...rows.map(row=>row.label));
+  managerRepairControl('Result').hidden=true;
+  managerRepairControl('Draft').hidden=false;
+  managerRepairControl('Start').hidden=true;
+  updateManagerRepair();
+ }catch(error){alert(error.message);}
+};
+function updateManagerRepair(){
+ managerRepairControl('Apply').disabled=!managerRepair?.verified||managerRepair.rows.some(row=>!row.select.value);
+}
+managerRepairControl('Cancel').onclick=resetManagerRepair;
+managerRepairControl('Download').onclick=()=>{
+ try{
+  if(managerRepairSource()!==managerRepair.raw)throw Error('Исходная база изменилась. Начните исправление заново.');
+  downloadJsonText(managerRepair.raw,'prorabka-before-manager-repair.json');
+ }catch(error){managerRepairControl('Status').textContent=error.message;}
+};
+managerRepairControl('File').onchange=async event=>{
+ const draft=managerRepair,file=event.target.files[0];
+ if(!draft)return;
+ draft.verified=false;
+ updateManagerRepair();
+ try{
+  const bytes=file&&new Uint8Array(await file.arrayBuffer());
+  if(draft!==managerRepair||file!==event.target.files[0])return;
+  const expected=new TextEncoder().encode(draft.raw);
+  if(!bytes||bytes.length!==expected.length||!bytes.every((byte,index)=>byte===expected[index]))throw Error('Файл не совпадает с исходным JSON.');
+  if(managerRepairSource()!==draft.raw)throw Error('Исходная база изменилась. Начните исправление заново.');
+  draft.verified=true;
+  managerRepairControl('Status').textContent='Файл совпадает с исходным JSON. Выбранные назначения можно сохранить.';
+ }catch(error){if(draft===managerRepair&&file===event.target.files[0])managerRepairControl('Status').textContent=error.message;}
+ updateManagerRepair();
+};
+managerRepairControl('Apply').onclick=()=>{
+ const draft=managerRepair,status=managerRepairControl('Status');
+ if(!draft?.verified||draft.rows.some(row=>!row.select.value))return;
+ try{
+  if(managerRepairSource()!==draft.raw)throw Error('Исходная база изменилась. Начните исправление заново.');
+  const decisions=new Map(draft.rows.map(row=>[row.object.id,row.select.value==='@clear'?null:row.select.value]));
+  const recordChanges=draft.rows.map(({object})=>({collection:'objects',id:object.id,mode:'edit',previous:JSON.stringify(object)}));
+  const candidate={...db,objects:db.objects.map(object=>decisions.has(object.id)?{...object,managerId:decisions.get(object.id)}:object)};
+  const saved=persistence.commit(candidate,{recordChanges});
+  db=saved.value;
+  if(!saved.ok)throw Error(saved.error);
+ }catch(error){status.textContent='Исправления не сохранены. '+error.message;return;}
+ resetManagerRepair();
+ const result=managerRepairControl('Result');
+ result.textContent='Исправлено назначений: '+draft.rows.length+'.';
+ result.hidden=false;
+ document.getElementById('storageNotice')?.remove();
+ try{renderAll()}catch(error){console.error(error);storageNotice('Исправления сохранены, но экран не обновился. Перезагрузите страницу.');}
+};
 renderAll();
 </script><script>
 function prepareTimesheetImport(p){

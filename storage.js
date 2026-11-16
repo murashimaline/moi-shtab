@@ -194,6 +194,7 @@ function validate(data,{links=true}={}){
   for(const [i,r] of next[k].entries()){
    const path=k+'['+i+']';
    if(!object(r)||!validId(r.id)||ids.has(r.id))fail(path+'.id');ids.add(r.id);
+   if(Object.hasOwn(r,'managerId')&&(k!=='objects'||r.managerId!==null&&!validId(r.managerId)))fail(path+'.managerId');
    validateRecord(k,r,path,fail,links);
   }
  }
@@ -207,6 +208,9 @@ function validate(data,{links=true}={}){
  }
  for(const [month,r] of Object.entries(next.advanceReports))if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)||!object(r)||typeof r.status!=='string')fail('advanceReports.'+month);
  if(links)for(const k of collections)for(const r of next[k]){
+  if(k==='objects'&&r.managerId!=null&&!resolveReference(next,{collection:'workers',id:r.managerId})){
+   fail('objects.managerId — объект «'+r.name+'», сотрудник '+r.managerId+' отсутствует');
+  }
   for(const [field,target] of Object.entries(referenceTargets))if(r[field]&&!resolveReference(next,{collection:target,id:r[field]}))fail(k+'.'+field+' — ссылка должна вести на существующую запись; удаление связанных записей запрещено');
   if(['attendance','payments'].includes(k)&&!r.workerId)fail(k+'.workerId');
   if(k==='warehouseMovements'&&!r.itemId)fail(k+'.itemId');
@@ -401,6 +405,10 @@ function diagnoseRaw(raw){
   const r=e.row;
   for(const [field,target] of Object.entries(referenceTargets))checkLink(e,field,target,r[field],
    field==='workerId'&&['attendance','payments'].includes(collection)||field==='itemId'&&collection==='warehouseMovements');
+  if(Object.hasOwn(r,'managerId')){
+   if(collection!=='objects'||r.managerId!==null&&!idOK(r.managerId))report(e,'invalid_link','links','error','managerId','Недопустимое назначение ответственного','Допускается только у объекта: null или ID сотрудника.');
+   else if(r.managerId!==null)checkLink(e,'managerId','workers',r.managerId);
+  }
   if(r.workerIds!==undefined){
    if(!Array.isArray(r.workerIds))report(e,'invalid_worker_list','links','error','workerIds','Список сотрудников повреждён','Ожидается массив ID.');
    else {r.workerIds.forEach((v,i)=>checkLink(e,'workerIds['+i+']','workers',v,true));
