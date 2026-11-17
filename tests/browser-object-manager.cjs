@@ -28,9 +28,9 @@ let server,browser,passed=0;
  async function scenario(name,data,run,mobile=false){
   const context=await browser.newContext({viewport:{width:mobile?390:1440,height:900},hasTouch:mobile,acceptDownloads:true});
   try{
-   await context.addInitScript(({key,data})=>{
+   await context.addInitScript(({key,raw})=>{
     if(localStorage.getItem(key)===null){
-     localStorage.setItem(key,JSON.stringify(data));
+     localStorage.setItem(key,raw);
      localStorage.setItem(key+'_before_import','previous backup');
     }
     const set=Storage.prototype.setItem;
@@ -42,7 +42,7 @@ let server,browser,passed=0;
      }
      return set.call(this,name,value);
     };
-   },{key,data});
+   },{key,raw:typeof data==='string'?data:JSON.stringify(data)});
    const page=await context.newPage(),dialogs=[],errors=[];
    page.on('dialog',async dialog=>{dialogs.push(dialog.message());await dialog.accept()});
    page.on('pageerror',error=>errors.push(error.message));
@@ -165,6 +165,61 @@ let server,browser,passed=0;
   assert.equal(backup.toString('utf8'),raw);
   await page.locator('#managerRepairFile').setInputFiles(jsonFile(backup));
   await page.waitForFunction(()=>!document.getElementById('managerRepairApply').disabled);
+ }
+ const unicodeSource=JSON.stringify({
+  ...fixture,objects:[{...broken[0],notes:'Отметка: SYMBOL'}],
+  financeHistory:[{at:'2026-01-01',collection:'payments',id:'previous',action:'create',before:'null',after:'{"amount":50}'}]
+ });
+ for(const unit of [0xD800,0xDC00]){
+  const raw=unicodeSource.replace('SYMBOL',String.fromCharCode(unit));
+  await scenario('Rejects UTF-8 replacement for lone U+'+unit.toString(16).toUpperCase(),raw,async(page,snapshot)=>{
+   const before=await snapshot();
+   assert.ok(before.raw.includes(String.fromCharCode(unit)));
+   assert.equal(before.model.financeHistory.length,1);
+   assert.deepEqual(before.model, before.confirmed);
+   await page.locator('#managerRepairStart').click();
+   await page.locator('#managerRepairRows select').selectOption('@clear');
+   await page.locator('#managerRepairDownload').click();
+   const status=page.locator('#managerRepairStatus');
+   assert.match(await status.textContent(),/непарный UTF-16/);
+   await page.locator('#managerRepairCancel').click();
+   await page.locator('#managerRepairStart').click();
+   await page.locator('#managerRepairRows select').selectOption('@clear');
+   const lossy=raw.replace(String.fromCharCode(unit),'\uFFFD');
+   assert.notEqual(lossy,raw);
+   await page.locator('#managerRepairFile').setInputFiles(jsonFile(lossy));
+   await page.waitForFunction(()=>/UTF-16|Файл совпадает/.test(document.getElementById('managerRepairStatus').textContent));
+   assert.match(await status.textContent(),/непарный UTF-16/);
+   assert.doesNotMatch(await status.textContent(),/Файл совпадает/);
+   const apply=page.locator('#managerRepairApply');
+   assert.equal(await apply.isDisabled(),true);
+   await apply.evaluate(button=>button.click());
+   assert.deepEqual(await snapshot(),before);
+  });
+ }
+ for(const symbols of ['Русский текст','Проверено 🧱']){
+  const raw=unicodeSource.replace('SYMBOL',symbols);
+  await scenario('Confirms an exact UTF-8 copy of '+symbols,raw,async(page,snapshot)=>{
+   const before=await snapshot();
+   await page.locator('#managerRepairStart').click();
+   await page.locator('#managerRepairRows select').selectOption('@clear');
+   const backup=await download(page,'#managerRepairDownload');
+   assert.deepEqual(backup,Buffer.from(raw,'utf8'));
+   await page.locator('#managerRepairFile').setInputFiles(jsonFile(Buffer.from(raw+' ','utf8')));
+   await page.waitForFunction(()=>document.getElementById('managerRepairStatus').textContent.includes('не совпадает'));
+   assert.equal(await page.locator('#managerRepairApply').isDisabled(),true);
+   assert.deepEqual(await snapshot(),before);
+   await page.locator('#managerRepairFile').setInputFiles(jsonFile(backup));
+   await page.waitForFunction(()=>!document.getElementById('managerRepairApply').disabled);
+   assert.match(await page.locator('#managerRepairStatus').textContent(),/Файл совпадает/);
+   assert.deepEqual(await snapshot(),before);
+   await page.locator('#managerRepairApply').click();
+   const after=await snapshot();
+   assert.equal(after.writes,before.writes+1);
+   assert.deepEqual(after.model.objects,[{...before.model.objects[0],managerId:null}]);
+   assert.deepEqual(after.model.financeHistory,before.model.financeHistory);
+   assert.equal(after.backup,before.backup);
+  });
  }
  await scenario('Two repairs use one confirmed source copy and roll back on quota failure',{...fixture,objects:broken},async(page,snapshot)=>{
   const before=await snapshot();

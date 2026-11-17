@@ -1436,14 +1436,18 @@ document.getElementById('printFinance').addEventListener('click',()=>{
  const {from,to,oid}=financeRange();const report=document.getElementById('financeReport').innerHTML,objects=document.getElementById('financeByObjects').innerHTML;
  w.document.open();w.document.write(`<!doctype html><html lang="ru"><head><meta charset="utf-8"><title>Финансовый отчёт ${esc(from)} — ${esc(to)}</title><style>@page{size:A4;margin:15mm}body{font:12px/1.6 Arial,sans-serif;color:#152238}h1{color:#075ba1}h2{margin-top:30px}table{width:100%;border-collapse:collapse}th,td{padding:7px;border:1px solid #bbc9d9;text-align:left}th{background:#edf4fa}.table-wrap{width:100%}.muted-small{font-size:10px;color:#4c617c}</style></head><body><h1>Прорабка — финансовый отчёт</h1><p>Период: ${esc(from||'все даты')} — ${esc(to||'все даты')} · Объект: ${esc(oid?objName(oid):'Все объекты')}</p><h2>Итоги</h2>${report}<h2>Данные по объектам</h2>${objects}<script>window.onload=()=>window.print()<\/script></body></html>`);w.document.close();
 });
-function downloadJsonText(raw,filename){
- // Blob encodes text as UTF-8 and would silently replace lone UTF-16
- // surrogates. Refuse that lossy download rather than alter the source.
+function assertExactUtf8(raw){
+ // Blob and TextEncoder both replace lone UTF-16 surrogates with U+FFFD.
  for(let i=0;i<raw.length;i++){
   const unit=raw.charCodeAt(i);
-  if(unit>=0xD800&&unit<=0xDBFF){const next=raw.charCodeAt(++i);if(next>=0xDC00&&next<=0xDFFF)continue;throw Error('Исходный текст содержит непарный UTF-16 символ; точная UTF-8 выгрузка невозможна.')}
-  if(unit>=0xDC00&&unit<=0xDFFF)throw Error('Исходный текст содержит непарный UTF-16 символ; точная UTF-8 выгрузка невозможна.');
+  if(unit<0xD800||unit>0xDFFF)continue;
+  const next=raw.charCodeAt(i+1);
+  if(unit<=0xDBFF&&next>=0xDC00&&next<=0xDFFF){i++;continue;}
+  throw Error('Исходный текст содержит непарный UTF-16 символ; точная UTF-8 выгрузка невозможна.');
  }
+}
+function downloadJsonText(raw,filename){
+ assertExactUtf8(raw);
  const url=URL.createObjectURL(new Blob([raw],{type:'application/json'})),a=document.createElement('a');
  try{a.href=url;a.download=filename;document.body.appendChild(a);a.click()}
  finally{a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000)}
@@ -1733,7 +1737,9 @@ managerRepairControl('File').onchange=async event=>{
  if(!draft)return;
  draft.verified=false;
  updateManagerRepair();
+ managerRepairControl('Status').textContent='';
  try{
+  assertExactUtf8(draft.raw);
   const bytes=file&&new Uint8Array(await file.arrayBuffer());
   if(draft!==managerRepair||file!==event.target.files[0])return;
   const expected=new TextEncoder().encode(draft.raw);
