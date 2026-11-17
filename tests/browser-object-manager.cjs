@@ -166,6 +166,13 @@ let server,browser,passed=0;
   await page.locator('#managerRepairFile').setInputFiles(jsonFile(backup));
   await page.waitForFunction(()=>!document.getElementById('managerRepairApply').disabled);
  }
+ const repairApply=page=>page.locator('#managerRepairApply');
+ const repairStatus=page=>page.locator('#managerRepairStatus');
+ const repairRows=page=>page.locator('#managerRepairRows select');
+ const repairFile=page=>page.locator('#managerRepairFile');
+ async function waitForRepairResult(page,id,text){
+  await page.waitForFunction(({id,text})=>document.getElementById(id).textContent.includes(text),{id,text});
+ }
  const unicodeSource=JSON.stringify({
   ...fixture,objects:[{...broken[0],notes:'Отметка: SYMBOL'}],
   financeHistory:[{at:'2026-01-01',collection:'payments',id:'previous',action:'create',before:'null',after:'{"amount":50}'}]
@@ -214,6 +221,7 @@ let server,browser,passed=0;
    assert.match(await page.locator('#managerRepairStatus').textContent(),/Файл совпадает/);
    assert.deepEqual(await snapshot(),before);
    await page.locator('#managerRepairApply').click();
+   await waitForRepairResult(page,'managerRepairResult','Исправлено назначений');
    const after=await snapshot();
    assert.equal(after.writes,before.writes+1);
    assert.deepEqual(after.model.objects,[{...before.model.objects[0],managerId:null}]);
@@ -230,11 +238,14 @@ let server,browser,passed=0;
   await confirmRepair(page,before.raw);
   await page.evaluate(()=>{window.failWrite=true});
   await page.locator('#managerRepairApply').click();
+  await waitForRepairResult(page,'managerRepairStatus','Synthetic quota failure');
   assert.match(await page.locator('#managerRepairStatus').textContent(),/не сохранены.*Synthetic quota failure/);
   assert.deepEqual(await snapshot(),before);
   assert.deepEqual(await page.locator('#managerRepairRows select').evaluateAll(rows=>rows.map(row=>row.value)),['w1','@clear']);
   await page.evaluate(()=>{window.failWrite=false});
+  await repairFile(page).setInputFiles(jsonFile(before.raw));
   await page.locator('#managerRepairApply').click();
+  await waitForRepairResult(page,'managerRepairResult','Исправлено назначений');
   const after=await snapshot();
   assert.equal(after.writes,1);
   assert.equal(after.backup,before.backup);
@@ -248,8 +259,103 @@ let server,browser,passed=0;
   const before=await snapshot();
   await confirmRepair(page,before.raw);
   await page.locator('#managerRepairApply').click();
+  await waitForRepairResult(page,'managerRepairStatus','tasks.objectId');
   assert.match(await page.locator('#managerRepairStatus').textContent(),/tasks.objectId/);
   assert.deepEqual(await snapshot(),before);
+ });
+ const shift={id:'shift',workerId:'w1',date:'2026-01-01',status:'Смена',hours:8,shifts:1,ratePerShift:9000};
+ const corrected={...shift,notes:'Уточнено'};
+ const repairHistoryFixture={
+  ...JSON.parse(unicodeSource),objects:broken,attendance:[corrected],
+  attendanceEditHistory:[{id:'event',at:'2026-01-01T12:00:00.000Z',attendanceId:'shift',workerId:'w1',
+   reason:'Сверка',before:shift,after:corrected,accruedBeforeCents:900000,accruedAfterCents:900000}]
+ };
+ for(const mode of ['unreadable','changed']){
+  await scenario('Apply refuses a '+mode+' confirmed file on its second read',repairHistoryFixture,async(page,snapshot)=>{
+   const before=await snapshot();
+   await confirmRepair(page,before.raw);
+   await repairFile(page).evaluate((input,mode)=>{
+    input.files[0].arrayBuffer=async()=>{
+     if(mode==='unreadable')throw new DOMException('Synthetic failure','NotReadableError');
+     return new TextEncoder().encode('{}').buffer;
+    };
+   },mode);
+   await repairApply(page).click();
+   const message=mode==='unreadable'?'Не удалось прочитать файл':'Файл не совпадает';
+   await waitForRepairResult(page,'managerRepairStatus',message);
+   assert.match(await repairStatus(page).textContent(),/Исправления не сохранены/);
+   assert.equal(await repairApply(page).isDisabled(),true);
+   assert.equal(await page.locator('#managerRepairResult').isHidden(),true);
+   assert.deepEqual(await repairRows(page).evaluateAll(rows=>rows.map(row=>row.value)),['w1','@clear']);
+   assert.deepEqual(await snapshot(),before);
+  });
+ }
+ async function holdApply(page){
+  await repairFile(page).evaluate(async input=>{
+   const file=input.files[0],bytes=await file.arrayBuffer();
+   window.repairReads=0;
+   file.arrayBuffer=()=>{
+    window.repairReads++;
+    return new Promise(resolve=>{window.resumeRepair=()=>resolve(bytes)});
+   };
+   const button=document.getElementById('managerRepairApply'),apply=button.onclick;
+   button.onclick=()=>{
+    const attempt=apply.call(button);
+    window.repairAttempt??=attempt;
+    return attempt;
+   };
+  });
+  await repairApply(page).click();
+  await page.waitForFunction(()=>window.repairReads===1);
+  assert.equal(await repairApply(page).isDisabled(),true);
+ }
+ async function finishApply(page){
+  await page.evaluate(async()=>{window.resumeRepair();await window.repairAttempt});
+ }
+ for(const changed of ['file','actions','source','cancel']){
+  await scenario('Pending repair rejects changed '+changed,repairHistoryFixture,async(page,snapshot)=>{
+   const before=await snapshot();
+   await confirmRepair(page,before.raw);
+   await holdApply(page);
+   let expected=before;
+   if(changed==='file'){
+    await repairFile(page).setInputFiles({...jsonFile(before.raw),name:'different.json'});
+   }else if(changed==='actions'){
+    await repairRows(page).nth(0).selectOption('@clear');
+    await repairRows(page).nth(0).selectOption('w1');
+   }else if(changed==='source'){
+    await page.evaluate(key=>localStorage.setItem(key,localStorage.getItem(key)+' '),key);
+    expected={...before,raw:before.raw+' ',writes:before.writes+1};
+   }else{
+    await page.locator('#managerRepairCancel').click();
+    await page.locator('#managerRepairStart').click();
+   }
+   await finishApply(page);
+   assert.equal(await repairApply(page).isDisabled(),true);
+   assert.equal(await page.locator('#managerRepairResult').isHidden(),true);
+   assert.doesNotMatch(await repairStatus(page).textContent(),/Файл совпадает/);
+   if(changed!=='cancel'){
+    const errors={file:/Выбранный файл изменился/,actions:/Действия по назначениям изменились/,source:/Исходная база изменилась/};
+    assert.match(await repairStatus(page).textContent(),errors[changed]);
+    assert.deepEqual(await repairRows(page).evaluateAll(rows=>rows.map(row=>row.value)),['w1','@clear']);
+   }
+   assert.deepEqual(await snapshot(),expected);
+  });
+ }
+ await scenario('Repeated Apply uses one second read and one commit',repairHistoryFixture,async(page,snapshot)=>{
+  const before=await snapshot();
+  await confirmRepair(page,before.raw);
+  await holdApply(page);
+  await repairApply(page).evaluate(button=>button.onclick());
+  assert.equal(await page.evaluate(()=>window.repairReads),1);
+  assert.deepEqual(await snapshot(),before);
+  await finishApply(page);
+  const after=await snapshot();
+  assert.equal(after.writes,before.writes+1);
+  assert.deepEqual(after.model.objects,[{...broken[0],managerId:'w1'},{...broken[1],managerId:null}]);
+  assert.deepEqual(after.model.financeHistory,before.model.financeHistory);
+  assert.deepEqual(after.model.attendanceEditHistory,before.model.attendanceEditHistory);
+  assert.equal(after.backup,before.backup);
  });
  await scenario('Object form keeps draft after quota failure and rejects a stale tab',fixture,async(page,snapshot,dialogs,context)=>{
   const before=await snapshot();

@@ -289,6 +289,7 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
   <button class="btn secondary" id="managerRepairDownload" type="button">Скачать исходный JSON до исправления</button>
   <p class="muted-small">Это исходная копия с разорванными ссылками. Чтобы подтвердить её сохранение, выберите скачанный файл.</p>
   <label>Подтвердить исходную копию<input id="managerRepairFile" type="file" accept=".json,application/json"></label>
+  <p class="muted-small">При сохранении ПРОрабка перечитает выбранный файл. Храните отдельную копию вне браузера.</p>
   <p id="managerRepairStatus" role="status"></p>
   <div class="actions">
    <button class="btn" id="managerRepairApply" type="button" disabled>Сохранить все исправления</button>
@@ -1677,6 +1678,7 @@ document.getElementById('objectManagerClear').onclick=()=>{
 
 const managerRepairControl=id=>document.getElementById('managerRepair'+id);
 let managerRepair=null;
+let managerRepairApplying=null;
 function brokenManagerObjects(){
  const workerIds=new Set(db.workers.map(worker=>worker.id));
  return db.objects.filter(object=>object.managerId!=null&&!workerIds.has(object.managerId));
@@ -1705,17 +1707,21 @@ managerRepairControl('Start').onclick=()=>{
  try{
   const raw=managerRepairSource(),objects=brokenManagerObjects();
   if(!objects.length)return;
-  const rows=objects.map(object=>{
+  const draft={raw,rows:[],selection:null,verifiedFile:null,actionsVersion:0};
+  draft.rows=objects.map(object=>{
    const label=document.createElement('label');
    label.textContent=object.name+' · отсутствует сотрудник '+object.managerId;
    const select=document.createElement('select');
    select.replaceChildren(new Option('Выберите действие',''),new Option('Снять назначение','@clear'),...managerOptions());
-   select.addEventListener('change',updateManagerRepair);
+   select.addEventListener('change',()=>{
+    draft.actionsVersion++;
+    updateManagerRepair();
+   });
    label.append(select);
    return {object,select,label};
   });
-  managerRepair={raw,rows,verified:false};
-  managerRepairControl('Rows').replaceChildren(...rows.map(row=>row.label));
+  managerRepair=draft;
+  managerRepairControl('Rows').replaceChildren(...draft.rows.map(row=>row.label));
   managerRepairControl('Result').hidden=true;
   managerRepairControl('Draft').hidden=false;
   managerRepairControl('Start').hidden=true;
@@ -1723,7 +1729,7 @@ managerRepairControl('Start').onclick=()=>{
  }catch(error){alert(error.message);}
 };
 function updateManagerRepair(){
- managerRepairControl('Apply').disabled=!managerRepair?.verified||managerRepair.rows.some(row=>!row.select.value);
+ managerRepairControl('Apply').disabled=Boolean(managerRepairApplying)||!managerRepair?.verifiedFile||managerRepair.rows.some(row=>!row.select.value);
 }
 managerRepairControl('Cancel').onclick=resetManagerRepair;
 managerRepairControl('Download').onclick=()=>{
@@ -1732,36 +1738,77 @@ managerRepairControl('Download').onclick=()=>{
   downloadJsonText(managerRepair.raw,'prorabka-before-manager-repair.json');
  }catch(error){managerRepairControl('Status').textContent=error.message;}
 };
+async function checkManagerRepairFile(raw,file){
+ assertExactUtf8(raw);
+ if(!file)throw Error('Выберите файл исходной копии.');
+ let bytes;
+ try{bytes=new Uint8Array(await file.arrayBuffer());}
+ catch{throw Error('Не удалось прочитать файл исходной копии. Выберите его заново.');}
+ const expected=new TextEncoder().encode(raw);
+ if(bytes.length!==expected.length||!bytes.every((byte,index)=>byte===expected[index]))throw Error('Файл не совпадает с исходным JSON.');
+}
 managerRepairControl('File').onchange=async event=>{
- const draft=managerRepair,file=event.target.files[0];
+ const draft=managerRepair,input=event.target,file=input.files[0];
  if(!draft)return;
- draft.verified=false;
+ const selection={file};
+ draft.selection=selection;
+ draft.verifiedFile=null;
  updateManagerRepair();
- managerRepairControl('Status').textContent='';
+ const status=managerRepairControl('Status');
+ status.textContent='';
+ if(managerRepairApplying===draft){
+  status.textContent='Файл изменён во время проверки. После завершения выберите копию заново.';
+  return;
+ }
+ const isCurrent=()=>draft===managerRepair&&draft.selection===selection&&file===input.files[0];
  try{
-  assertExactUtf8(draft.raw);
-  const bytes=file&&new Uint8Array(await file.arrayBuffer());
-  if(draft!==managerRepair||file!==event.target.files[0])return;
-  const expected=new TextEncoder().encode(draft.raw);
-  if(!bytes||bytes.length!==expected.length||!bytes.every((byte,index)=>byte===expected[index]))throw Error('Файл не совпадает с исходным JSON.');
+  await checkManagerRepairFile(draft.raw,file);
+  if(!isCurrent())return;
   if(managerRepairSource()!==draft.raw)throw Error('Исходная база изменилась. Начните исправление заново.');
-  draft.verified=true;
-  managerRepairControl('Status').textContent='Файл совпадает с исходным JSON. Выбранные назначения можно сохранить.';
- }catch(error){if(draft===managerRepair&&file===event.target.files[0])managerRepairControl('Status').textContent=error.message;}
+  draft.verifiedFile=file;
+  status.textContent='Файл совпадает с исходным JSON. Выбранные назначения можно сохранить.';
+ }catch(error){if(isCurrent())status.textContent=error.message;}
  updateManagerRepair();
 };
-managerRepairControl('Apply').onclick=()=>{
+managerRepairControl('Apply').onclick=async()=>{
  const draft=managerRepair,status=managerRepairControl('Status');
- if(!draft?.verified||draft.rows.some(row=>!row.select.value))return;
+ if(managerRepairApplying||!draft?.verifiedFile)return;
+ const file=draft.verifiedFile,input=managerRepairControl('File'),selection=draft.selection;
+ const actionsVersion=draft.actionsVersion;
+ const choices=draft.rows.map(row=>row.select.value);
+ managerRepairApplying=draft;
+ status.textContent='Повторная проверка файла исходной копии…';
+ updateManagerRepair();
  try{
+  if(file!==input.files[0])throw Error('Выбранный файл изменился. Подтвердите копию заново.');
+  await checkManagerRepairFile(draft.raw,file);
+  if(draft!==managerRepair)return;
+  if(file!==input.files[0]||draft.selection!==selection||draft.verifiedFile!==file){
+   throw Error('Выбранный файл изменился. Подтвердите копию заново.');
+  }
   if(managerRepairSource()!==draft.raw)throw Error('Исходная база изменилась. Начните исправление заново.');
-  const decisions=new Map(draft.rows.map(row=>[row.object.id,row.select.value==='@clear'?null:row.select.value]));
+  const workerIds=new Set(db.workers.map(worker=>worker.id));
+  if(draft.actionsVersion!==actionsVersion||draft.rows.some(({select},index)=>
+   select.value!==choices[index]||(select.value!=='@clear'&&!workerIds.has(select.value))
+  ))throw Error('Действия по назначениям изменились или недоступны. Проверьте выбор и подтвердите копию заново.');
+  const decisions=new Map(draft.rows.map(({object},index)=>[object.id,choices[index]==='@clear'?null:choices[index]]));
   const recordChanges=draft.rows.map(({object})=>({collection:'objects',id:object.id,mode:'edit',previous:JSON.stringify(object)}));
   const candidate={...db,objects:db.objects.map(object=>decisions.has(object.id)?{...object,managerId:decisions.get(object.id)}:object)};
   const saved=persistence.commit(candidate,{recordChanges});
   db=saved.value;
   if(!saved.ok)throw Error(saved.error);
- }catch(error){status.textContent='Исправления не сохранены. '+error.message;return;}
+ }catch(error){
+  if(draft===managerRepair){
+   draft.verifiedFile=null;
+   draft.selection=null;
+   input.value='';
+   status.textContent='Исправления не сохранены. '+error.message;
+  }
+  return;
+ }finally{
+  managerRepairApplying=null;
+  updateManagerRepair();
+ }
  resetManagerRepair();
  const result=managerRepairControl('Result');
  result.textContent='Исправлено назначений: '+draft.rows.length+'.';
