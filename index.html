@@ -1329,9 +1329,10 @@ function shtCell(col,row,v,style=0,formula='',cached=''){
  return `<c r="${id}"${mark} t="inlineStr"><is><t xml:space="preserve">${shtXmlEsc(v)}</t></is></c>`;
 }
 function shtSheetXml(rows,columns,opts={}){
- const widthTags=columns.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join('');
+ const widthTags=columns.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w||8}" customWidth="1"${w?'':' hidden="1"'}/>`).join('');
  const rowTags=rows.map(({index,cells,height})=>`<row r="${index}"${height?` ht="${height}" customHeight="1"`:''}>${cells.join('')}</row>`).join('');
- return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetViews><sheetView showGridLines="0" zoomScale="80" workbookViewId="0">${opts.freeze?`<pane xSplit="4" ySplit="6" topLeftCell="E7" activePane="bottomRight" state="frozen"/>`:''}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${widthTags}</cols><sheetData>${rowTags}</sheetData>${opts.autoFilter?`<autoFilter ref="${opts.autoFilter}"/>`:''}${opts.merge?`<mergeCells count="${opts.merge.length}">${opts.merge.map(ref=>`<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`:''}${opts.conditional||''}<pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/></worksheet>`;
+ const pane=opts.pane||'';
+ return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${opts.print?'<sheetPr><pageSetUpPr fitToPage="1"/></sheetPr>':''}<sheetViews><sheetView showGridLines="0" zoomScale="${opts.zoom||80}" workbookViewId="0">${pane}</sheetView></sheetViews><sheetFormatPr defaultRowHeight="18"/><cols>${widthTags}</cols><sheetData>${rowTags}</sheetData>${opts.autoFilter?`<autoFilter ref="${opts.autoFilter}"/>`:''}${opts.merge?`<mergeCells count="${opts.merge.length}">${opts.merge.map(ref=>`<mergeCell ref="${ref}"/>`).join('')}</mergeCells>`:''}${opts.conditional||''}${opts.validation||''}<pageMargins left="0.3" right="0.3" top="0.5" bottom="0.5" header="0.2" footer="0.2"/>${opts.print?'<pageSetup paperSize="8" orientation="landscape" fitToWidth="1" fitToHeight="0"/>':''}</worksheet>`;
 }
 // Excel reads the background color for a solid differential fill.
 const shtStyles=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="2"><numFmt numFmtId="165" formatCode="dd.mm.yyyy"/><numFmt numFmtId="166" formatCode="dd.mm"/></numFmts><fonts count="4"><font><sz val="11"/><color rgb="FF24344B"/><name val="Aptos"/></font><font><b/><sz val="11"/><color rgb="FFFFFFFF"/><name val="Aptos"/></font><font><b/><sz val="18"/><color rgb="FF173F75"/><name val="Aptos Display"/></font><font><b/><sz val="11"/><color rgb="FF16477A"/><name val="Aptos"/></font></fonts><fills count="6"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF166EB1"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE7F2FD"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFF4F8FD"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEFF5FB"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="hair"><color rgb="FFDDE5EF"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="9"><xf numFmtId="0" fontId="0" fillId="0" borderId="1" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" xfId="0" applyFill="1" applyFont="1"/><xf numFmtId="0" fontId="2" fillId="0" borderId="0" xfId="0" applyFont="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="1" xfId="0" applyNumberFormat="1"/><xf numFmtId="0" fontId="0" fillId="3" borderId="1" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="3" fillId="3" borderId="1" xfId="0" applyFill="1" applyFont="1"/><xf numFmtId="166" fontId="1" fillId="2" borderId="1" xfId="0" applyNumberFormat="1" applyFill="1"/><xf numFmtId="0" fontId="0" fillId="4" borderId="1" xfId="0" applyFill="1"/><xf numFmtId="0" fontId="3" fillId="5" borderId="1" xfId="0" applyFill="1" applyFont="1"/></cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles><dxfs count="3"><dxf><font><color rgb="FFA61B1B"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFCE2E2"/><bgColor rgb="FFFCE2E2"/></patternFill></fill></dxf><dxf><font><color rgb="FF146C43"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFDCF6E8"/><bgColor rgb="FFDCF6E8"/></patternFill></fill></dxf><dxf><font><color rgb="FF805200"/></font><fill><patternFill patternType="solid"><fgColor rgb="FFFFE8B3"/><bgColor rgb="FFFFE8B3"/></patternFill></fill></dxf></dxfs></styleSheet>`;
@@ -1353,55 +1354,233 @@ function shtZip(entries){
  const cd=concat(central),end=concat([u32(0x06054b50),u16(0),u16(0),u16(central.length),u16(central.length),u32(cd.length),u32(offset),u16(0)]);
  return new Blob([...parts,cd,end],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
 }
-function exportScheduleXlsx(){
- const records=scheduleFlatRows(),start=document.getElementById('scheduleViewStart').value||today(),days=Number(document.getElementById('scheduleViewDays').value)||30;
- const lastRow=Math.max(7,records.length+6),right=shtCol(11+days);const grid=[];
- grid.push({index:1,height:32,cells:[shtCell(1,1,'ПРОРАБКА · ГРАФИК РАБОТ',2)]});
- grid.push({index:2,cells:[shtCell(1,2,'Этапы, стадии и сроки. Формулы и цвета обновляются при изменении данных в Excel.')]});
- grid.push({index:3,cells:[shtCell(1,3,'Задержки',8),shtCell(2,3,null,0,`COUNTIF(H7:H${lastRow},"Задержка")`,records.filter(x=>scheduleGetState(x).key==='late').length),shtCell(4,3,'В срок',8),shtCell(5,3,null,0,`COUNTIF(H7:H${lastRow},"В срок")`,records.filter(x=>scheduleGetState(x).key==='ontime').length),shtCell(7,3,'Запланировано',8),shtCell(8,3,null,0,`COUNTIF(H7:H${lastRow},"Запланировано")`,records.filter(x=>scheduleGetState(x).key==='planned').length)]});
- grid.push({index:4,cells:[shtCell(1,4,'Красный = просрочено или «Задержка» · Зелёный = в срок или выполнено · Жёлтый = запланировано.')]});
- grid.push({index:5,cells:[shtCell(1,5,`Период диаграммы: ${start} — ${scheduleDatePlus(start,days-1)}. Чтобы сдвинуть шкалу в Excel, измените дату в L6.`)]});
- const headers=['Тип','Объект','Этап / стадия','Ответственный','Дата начала','Дата окончания','Исходный статус','По срокам (формула)','Осталось, дней','Длительность, дней','Примечание'];
- const cells=headers.map((s,i)=>shtCell(i+1,6,s,1));for(let d=0;d<days;d++){const column=12+d;cells.push(d?shtCell(column,6,null,6,`${shtCol(column-1)}6+1`,shtSerial(scheduleDatePlus(start,d))):shtCell(column,6,shtSerial(start),6))}grid.push({index:6,height:32,cells});
- records.forEach((x,index)=>{
-  const r=index+7,style=x.kind==='Этап'?5:0,st=scheduleGetState(x);
-  const vals=[x.kind,x.objectLabel||'—',x.kind==='Стадия'?'  ↳ '+x.title:x.title,x.assignee||'',shtSerial(x.start),shtSerial(x.end),x.status||'Запланировано'];
-  const data=vals.map((v,i)=>shtCell(i+1,r,v,i===4||i===5?3:style));
-  const formula=`IF(OR(E${r}="",F${r}=""),"Нет сроков",IF(OR(G${r}="Задержка",AND(G${r}<>"Выполнено",F${r}<TODAY())),"Задержка",IF(G${r}="Выполнено","В срок",IF(OR(G${r}="Запланировано",E${r}>TODAY()),"Запланировано","В срок"))))`;
-  data.push(shtCell(8,r,null,style,formula,st.key==='late'?'Задержка':st.key==='planned'?'Запланировано':'В срок'));
-  data.push(shtCell(9,r,null,style,`IF(OR(E${r}="",F${r}=""),"",IF(G${r}="Выполнено",0,F${r}-TODAY()))`,x.status==='Выполнено'?0:x.end?scheduleDaysDelta(x.end,today()):0));
-  data.push(shtCell(10,r,null,style,`IF(OR(E${r}="",F${r}=""),"",MAX(0,F${r}-E${r}+1))`,x.start&&x.end?scheduleDaysDelta(x.end,x.start)+1:0));
-  data.push(shtCell(11,r,x.notes||'',style));
-  grid.push({index:r,height:x.kind==='Этап'?24:21,cells:data});
+
+const ganttStates=[
+ ['Запланировано','FAEDC5','9E6F09','674800'],
+ ['В работе','DDEAF8','2166A0','1C4C78'],
+ ['Выполнено','DCEFE2','2B8057','215239'],
+ ['Просрочено','F9DEE2','BB3E50','862537'],
+ ['Нет данных','E9EEF1','73838D','415561']
+];
+const ganttProgress=['0%','Больше 0%, меньше 50%','50% и выше, меньше 100%','100%','Нет данных','Вне диапазона'];
+
+function ganttStyles(){
+ const fills=['16394A','DCEAF0','FFF2D8','E0ECF3','EEF3F5',...ganttStates.map(s=>s[1])];
+ const rgb=color=>'FF'+color;
+ const font=(size,color,bold=false)=>`<font>${bold?'<b/>':''}<sz val="${size}"/><color rgb="${rgb(color)}"/><name val="Calibri"/></font>`;
+ const fill=(color,differential=false)=>`<fill><patternFill patternType="solid"><fgColor rgb="${rgb(color)}"/>${differential?`<bgColor rgb="${rgb(color)}"/>`:'<bgColor indexed="64"/>'}</patternFill></fill>`;
+ const dxf=(background,foreground)=>`<dxf>${foreground?`<font><b/><color rgb="${rgb(foreground)}"/></font>`:''}${background?fill(background,true):''}</dxf>`;
+ const dxfs=[...ganttStates.map(s=>dxf(s[1],s[3])),...ganttStates.map(s=>dxf(s[2])),...ganttStates.map(s=>dxf(null,s[2])),dxf('DDECF4'),dxf('F2F6F8'),dxf('3D706D','FFFFFF')];
+ const fonts=[font(11,'18323F'),font(11,'FFFFFF',true),font(22,'18323F',true),font(11,'16394A',true),font(11,'486473')];
+ const definitions={
+  text:[0,0,0,'left',1], number:[3,0,0,'center',1], header:[1,2,0,'center',1], day:[1,2,166,'center',0],
+  title:[2,0,0,'left',0], note:[4,0,0,'left',1], section:[3,3,0,'left',1], week:[3,3,0,'center',0],
+  date:[0,0,166,'center',0], inputDate:[0,4,165,'center',0], inputText:[0,4,0,'left',1], inputPct:[0,4,167,'center',0],
+  plan:[3,5,0,'center',0], fact:[3,6,0,'center',0], work:[3,0,0,'left',1], status:[3,0,0,'center',1],
+  axis:[0,0,0,'center',0], legend:[4,5,0,'center',1], legendFact:[4,9,0,'center',1], meter:[0,0,0,'center',0]
+ };
+ ganttStates.forEach((s,i)=>{definitions['state'+i]=[3,7+i,0,'left',1]});
+ const ids=Object.fromEntries(Object.keys(definitions).map((key,i)=>[key,i]));
+ const formats=Object.entries(definitions).map(([key,[fontId,fillId,numFmtId,horizontal,wrapText]])=>
+  `<xf numFmtId="${numFmtId}" fontId="${fontId}" fillId="${fillId}" borderId="${['title','note','section','week','legend','legendFact'].includes(key)?0:1}" xfId="0" applyFont="1" applyFill="1" applyBorder="1" applyNumberFormat="1" applyAlignment="1"><alignment horizontal="${horizontal}" vertical="center" wrapText="${wrapText}"/></xf>`);
+ const list=(tag,items)=>`<${tag} count="${items.length}">${items.join('')}</${tag}>`;
+ const xml=`<?xml version="1.0" encoding="UTF-8"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="3"><numFmt numFmtId="165" formatCode="dd.mm.yyyy"/><numFmt numFmtId="166" formatCode="dd.mm"/><numFmt numFmtId="167" formatCode="0%"/></numFmts>${list('fonts',fonts)}${list('fills',['<fill><patternFill patternType="none"/></fill>','<fill><patternFill patternType="gray125"/></fill>',...fills.map(c=>fill(c))])}<borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="hair"><color rgb="FFDBE6EB"/></bottom><diagonal/></border></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>${list('cellXfs',formats)}<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>${list('dxfs',dxfs)}</styleSheet>`;
+ return {xml,ids};
+}
+
+function ganttDate(value){
+ if(typeof value!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(value))return value?String(value):null;
+ const serial=shtSerial(value);
+ if(!Number.isFinite(serial)||serial<2||new Date(value+'T00:00:00Z').toISOString().slice(0,10)!==value)return value;
+ return serial<61?serial-1:serial;
+}
+
+function ganttWorkbook(records,windowStart,assessment){
+ const {xml:styles,ids}=ganttStyles();
+ const known=['Запланировано','В работе','Выполнено','Задержка'];
+ const first=17,last=16+records.length,graphEnd=7+records.length*2;
+ const assessmentRef="'График'!$E$4";
+ const days=Array.from({length:14},(_,i)=>shtCol(i+11));
+ const dateOk=ref=>`IFERROR(AND(ISNUMBER(${ref}),${ref}>=1,${ref}<=2958465,${ref}<>60,MOD(${ref},1)=0),FALSE)`;
+ const formulaText=value=>'"'+value+'"';
+ const range=col=>`$${col}$${first}:$${col}$${last}`;
+ const w=(rows,merge)=>{
+  function row(index,height=20){
+   const cells=[];
+   rows.push({index,cells,height});
+   return (cols,value,style='text',formula='',cache='')=>{
+    const [col,end]=String(cols).split(':').map(x=>Number(x));
+    if(end)merge.push(shtCol(col)+index+':'+shtCol(end)+index);
+    cells.push(shtCell(col,index,value,ids[style],formula,cache));
+   };
+  }
+  return row;
+ };
+ const graph=[],data=[],graphMerge=[],dataMerge=[];
+ const g=w(graph,graphMerge),d=w(data,dataMerge);
+ const rows=records.map((x,i)=>{
+  const start=ganttDate(x.start),end=ganttDate(x.end),count=x.kind==='Стадия'||!x.substeps?.length?1:0;
+  const valid=typeof start==='number'&&typeof end==='number'&&end>=start;
+  const source=x.status||'';
+  const status=source==='Выполнено'?source:source==='Задержка'?'Просрочено':
+   valid&&(source==='В работе'||source==='Запланировано')?(end<assessment?'Просрочено':source):'Нет данных';
+  const overdue=valid&&end<assessment;
+  const signal=!valid?'Сверить даты':source==='Выполнено'?'Дата финиша неизвестна':
+   source==='Задержка'?(overdue?`Отмечена задержка · +${assessment-end} дн.`:'Отмечена задержка'):
+   status==='Просрочено'?`Просрочено +${assessment-end} дн.`:'';
+  return {x,start,end,count,source,status,signal,no:i+1};
  });
- if(!records.length)grid.push({index:7,cells:[shtCell(3,7,'В графике пока нет этапов.')]});
- const statusConditions=[['$H7="Задержка"',0,1],['$H7="В срок"',1,2],['$H7="Запланировано"',2,3]];
- const cfs=shtCF(`A7:K${lastRow}`,statusConditions)+shtCF(`L7:${right}${lastRow}`,[
-  [`AND(L$6>=$E7,L$6<=$F7,$H7="Задержка")`,0,4],
-  [`AND(L$6>=$E7,L$6<=$F7,$H7="В срок")`,1,5],
-  [`AND(L$6>=$E7,L$6<=$F7,$H7="Запланировано")`,2,6]
- ]);
- // Keep the dd.mm dates visible at Excel's default and 100% zoom.
- const sheet1=shtSheetXml(grid,[15,25,37,26,17,17,21,23,17,21,40,...Array(days).fill(7)],{freeze:true,merge:['A1:K1','A2:K2','A4:K4','A5:K5'],conditional:cfs,autoFilter:`A6:K${lastRow}`});
- const summ=[];summ.push({index:1,height:35,cells:[shtCell(1,1,'СВОДКА ПО ГРАФИКУ РАБОТ',2)]});
- summ.push({index:3,cells:[shtCell(1,3,'Показатель',1),shtCell(2,3,'Значение',1)]});
- const sm=[['Этапов',`COUNTIF('График'!A7:A${lastRow},"Этап")`,(db.schedule||[]).length],['Стадий',`COUNTIF('График'!A7:A${lastRow},"Стадия")`,records.filter(x=>x.kind==='Стадия').length],['Просрочено',`COUNTIF('График'!H7:H${lastRow},"Задержка")`,records.filter(x=>scheduleGetState(x).key==='late').length],['В срок',`COUNTIF('График'!H7:H${lastRow},"В срок")`,records.filter(x=>scheduleGetState(x).key==='ontime').length],['Запланировано',`COUNTIF('График'!H7:H${lastRow},"Запланировано")`,records.filter(x=>scheduleGetState(x).key==='planned').length],['Всего строк',`COUNTA('График'!C7:C${lastRow})`,records.length]];
- sm.forEach(([s,f,c],i)=>summ.push({index:i+4,cells:[shtCell(1,i+4,s,i===2?8:0),shtCell(2,i+4,null,0,f,c)]}));
- summ.push({index:12,cells:[shtCell(1,12,'ПРАВИЛА ЦВЕТОВ',8)]});
- summ.push({index:13,cells:[shtCell(1,13,'Красный: срок прошёл, задача не выполнена; либо исходный статус «Задержка».')]});
- summ.push({index:14,cells:[shtCell(1,14,'Зелёный: в работе в пределах срока или статус «Выполнено».')]});
- summ.push({index:15,cells:[shtCell(1,15,'Жёлтый: статус «Запланировано» либо дата начала в будущем.')]});
- summ.push({index:17,cells:[shtCell(1,17,'Статусы и дни пересчитываются формулами по текущей дате TODAY().')]});
- summ.push({index:18,cells:[shtCell(1,18,'Дата фактического завершения отдельно не ведётся: «Выполнено» отображается зелёным.')]});
- const sheet2=shtSheetXml(summ,[90,19],{merge:['A1:B1']});
+ let row=d(2,37);row('1:15','Сводка по работам','title');
+ row=d(3,30);row('1:15','Единица подсчёта — стадия или этап без стадий. Этап со стадиями виден в таблице и графике. Итоги охватывают все работы, включая скрытые фильтром.','note');
+ row=d(5);row('1:2','Состояние работ','header');row(3,'Работ','header');row('5:8','Распределение готовности','header');row(9,'Работ','header');
+ const count=(criteria,cache)=>[records.length?`COUNTIFS(${range('P')},1,${criteria})`:'',cache];
+ function metric(write,col,formula,cache){write(col,cache,'number',formula,cache)}
+ const counted=rows.filter(x=>x.count);
+ for(let i=0;i<7;i++){
+  const r=6+i;row=d(r);
+  const label=ganttStates[i]?.[0];
+  if(label){
+   row('1:2',label,'state'+i);
+   metric(row,3,...count(`${range('J')},A${r}`,counted.filter(x=>x.status===label).length));
+  }else if(i===5){
+   row('1:2','Всего работ','section');
+   metric(row,3,records.length?`SUM(${range('P')})`:'',counted.length);
+  }else{
+   row('1:2','Из завершённых · с опозданием','section');
+   metric(row,3,...count(`${range('J')},"Выполнено",${range('Q')},">0"`,0));
+  }
+  if(i<ganttProgress.length){
+   row('5:8',ganttProgress[i],'note');
+   metric(row,9,...count(`${range('R')},E${r}`,i===4?counted.length:0));
+  }else{
+   row('5:8','Расхождения «Выполнено» и готовность <100%','note');
+   metric(row,9,...count(`${range('J')},"Выполнено",${range('R')},"<>Нет данных",${range('R')},"<>Вне диапазона",${range('I')},"<1"`,0));
+  }
+ }
+ row=d(14);row('1:15','ВВОД ПО РАБОТАМ · одна строка на запись · фильтруйте и сортируйте здесь','section');
+ row=d(15,25);row('1:15','Введите фактические даты и готовность по выполненному объёму (например, 35%). Пустое поле означает «Нет данных». Правки остаются в XLSX.','note');
+ row=d(16,30);
+ ['№','Вид работ','Ответственный','План с','План по','Факт с','Факт по','Статус · ввод','Готовность, %','Текущий статус','Сигнал по сроку','Примечание','Тип','Родительский этап','Объект'].forEach((v,i)=>row(i+1,v,'header'));
+ if(!records.length){row=d(first);row('1:15','В графике пока нет этапов.','note')}
+ rows.forEach(({x,start,end,count,source,status,signal,no},i)=>{
+  const r=first+i,planOk=`AND(${dateOk('D'+r)},${dateOk('E'+r)},E${r}>=D${r})`;
+  const factOk=`AND(OR(F${r}="",${dateOk('F'+r)}),OR(G${r}="",AND(${dateOk('F'+r)},${dateOk('G'+r)},G${r}>=F${r})))`;
+  const overdue=`AND(${planOk},${dateOk(assessmentRef)},E${r}<${assessmentRef})`;
+  row=d(r,Math.min(409,Math.max(26,13*Math.ceil(Math.max(String(x.title||'').length/37,String(x.notes||'').length/35)))));
+  row(1,no,'number');row(2,x.title,'work');row(3,x.assignee);
+  row(4,start,'inputDate');row(5,end,'inputDate');row(6,null,'inputDate');row(7,null,'inputDate');
+  row(8,source,'inputText');row(9,null,'inputPct');
+  const ordinary=`OR(H${r}="В работе",H${r}="Запланировано")`;
+  row(10,null,'status',`IF(H${r}="Выполнено","Выполнено",IF(OR(H${r}="Задержка",AND(${ordinary},${overdue})),"Просрочено",IF(AND(${ordinary},${planOk}),H${r},"Нет данных")))`,status);
+  const lateDays=`${assessmentRef}-E${r}`;
+  row(11,null,'text',`IF(NOT(AND(${planOk},${factOk})),"Сверить даты",IF(J${r}="Выполнено",IF(G${r}="","Дата финиша неизвестна",IF(Q${r}>0,"С опозданием +"&Q${r}&" дн.","Выполнено в срок")),IF(H${r}="Задержка","Отмечена задержка"&IF(${overdue}," · +"&(${lateDays})&" дн.",""),IF(J${r}="Просрочено","Просрочено +"&(${lateDays})&" дн.",IF(${dateOk(assessmentRef)},"","Сверить дату оценки")))))`,signal);
+  row(12,x.notes);row(13,x.kind);row(14,x.parentTitle);row(15,x.objectLabel);row(16,count);
+  row(17,null,'number',`IF(AND(J${r}="Выполнено",${planOk},${factOk},ISNUMBER(G${r})),MAX(0,G${r}-E${r}),0)`,0);
+  const p=ganttProgress.map(formulaText);
+  row(18,null,'text',`IF(I${r}="",${p[4]},IF(OR(NOT(ISNUMBER(I${r})),I${r}<0,I${r}>1),${p[5]},IF(I${r}=0,${p[0]},IF(I${r}<0.5,${p[1]},IF(I${r}<1,${p[2]},${p[3]})))))`,ganttProgress[4]);
+  // ROW and INDEX keep the filter rank tied to the visible physical position after sorting.
+  row(19,null,'number',`IF(SUBTOTAL(103,INDEX($A:$A,ROW())),SUBTOTAL(103,INDEX($A:$A,${first}):INDEX($A:$A,ROW())),0)`,no);
+ });
+
+ row=g(2,36);row('1:10','График работ · План и факт','title');row('11:24','ПРОРАБКА  /  ГРАФИК РАБОТ','section');
+ row=g(3,22);row('1:24','Даты, статусы, готовность и фильтры по работам — на листе «Сводка». Готовность отражает выполненный объём.','note');
+ row=g(4,24);row('1:4','Дата оценки','section');row(5,assessment,'inputDate');row('6:7','Начало шкалы','section');row('8:9',windowStart,'inputDate');
+ row('11:15','ПЛАН · светлая полоса','legend');row('16:20','ФАКТ · цвет статуса','legendFact');row('21:24','◆ начало факта','week');
+ row=g(5,21);row('1:2','● Запланировано','state0');row('3:5','● В работе','state1');row('6:9','● Выполнено','state2');row('10:16','● Просрочено / задержка','state3');row('17:24','● Нет данных','state4');
+ const validWindow=`AND(${dateOk('$H$4')},$H$4<=2958452,OR($H$4>=61,$H$4<=46))`;
+ const dayLabel=serial=>{const date=new Date(Date.UTC(1899,11,serial<60?31:30)+serial*86400000);return date.toISOString().slice(5,10).split('-').reverse().join('.')};
+ const formatDay=ref=>`RIGHT("0"&DAY(${ref}),2)&"."&RIGHT("0"&MONTH(${ref}),2)`;
+ row=g(6,20);row('1:10','РАБОТЫ И ОТКЛОНЕНИЯ','section');
+ for(let i=0;i<2;i++){
+  const a=i*7,b=a+6,firstDay=days[a]+'7',lastDay=days[b]+'7';
+  row(`${11+a}:${11+b}`,null,'week',`IF(${firstDay}="","Сверить начало шкалы",${formatDay(firstDay)}&" — "&${formatDay(lastDay)})`,`${dayLabel(windowStart+a)} — ${dayLabel(windowStart+b)}`);
+ }
+ row=g(7,32);
+ ['№','ВИД РАБОТ','Текущий статус','Готовность, %','Шкала','Отклонение','Ответственный','С даты','По дату','Полоса'].forEach((v,i)=>row(i+1,v,'header'));
+ days.forEach((_,i)=>row(11+i,null,'day',`IF(${validWindow},$H$4+${i},"")`,windowStart+i));
+ if(!records.length){row=g(8,24);row('1:24','В графике пока нет этапов.','note')}
+ const fromData=(col,pos)=>`INDEX('Сводка'!${range(col)},$Z${pos})`;
+ const fetch=(col,pos)=>`IF($Z${pos}=0,"",IF(ISBLANK(${fromData(col,pos)}),"",${fromData(col,pos)}))`;
+ rows.forEach(({x,start,end,status,signal,no},i)=>{
+  const r=8+i*2,f=r+1;
+  const name=x.kind==='Стадия'?(x.parentTitle?'↳ '+x.parentTitle+' / ':'↳ ')+(x.title||''):x.title||'';
+  const nameF=`IF($Z${r}=0,"",IF(${fromData('M',r)}="Стадия","↳ "&IF(${fromData('N',r)}="","",${fromData('N',r)}&" / "),"")&${fetch('B',r)})`;
+  const group=fromData('R',r),pct=fromData('I',r);
+  const pctCalc=`IF($Z${r}=0,"",IF(${group}="Нет данных","Нет данных",IF(NOT(ISNUMBER(${pct})),"сверить ввод",IFERROR(ROUND(${pct}*100,2)&"%","Вне диапазона")&IF(OR(${group}="Вне диапазона",AND($C${r}="Выполнено",${pct}<1))," · сверить",""))))`;
+  const height=Math.min(409,Math.max(20,6.5*Math.ceil(name.length/31)+3));
+  for(const p of [r,f]){
+   const plan=p===r;row=g(p,height);
+   if(plan){
+    for(let c=1;c<=7;c++)graphMerge.push(shtCol(c)+r+':'+shtCol(c)+f);
+    row(1,null,'number',fetch('A',r),no);row(2,null,'work',nameF,name);
+    row(3,null,'status',fetch('J',r),status);row(4,null,'status',pctCalc,'Нет данных');
+    row(5,null,'meter',`IF($Z${r}=0,"",IF(OR(${group}="Нет данных",${group}="Вне диапазона"),"",${pct}))`);
+    row(6,null,'text',fetch('K',r),signal);row(7,null,'text',fetch('C',r),x.assignee||'');
+   }
+   row(8,null,'date',fetch(plan?'D':'F',p),plan?(start??''):'');
+   row(9,null,'date',fetch(plan?'E':'G',p),plan?(end??''):'');
+   row(10,null,plan?'plan':'fact',`IF($Z${p}=0,"","${plan?'ПЛАН':'ФАКТ'}")`,plan?'ПЛАН':'ФАКТ');
+   days.forEach((c,j)=>row(j+11,null,'axis',plan?'':`IF(AND(${dateOk('$H'+p)},$I${p}="",${c}$7=$H${p}),"◆","")`));
+   row(25,null,'text',fetch('J',p),status);
+   row(26,null,'number',plan?`IFERROR(MATCH(${no},'Сводка'!${range('S')},0),0)`:`$Z${r}`,no);
+  }
+ });
+ row=g(Math.max(9,graphEnd+2),22);
+ row('1:24','Факт показан только по введённым датам. Работы за пределами окна остаются в списке. Фильтр и сортировка — на «Сводке».','note');
+
+ const cf=()=>{
+  let priority=0;
+  return (ref,rules)=>shtCF(ref,rules.map(([f,id])=>[f,id,++priority]));
+ };
+ const graphCf=cf(),dataCf=cf();
+ let graphConditions=graphCf('K7:X7',[[`AND(ISNUMBER(K7),K7=$E$4)`,17]]);
+ let dataConditions='',dataValidation='';
+ const validate=(type,ref,formulas,message)=>`<dataValidation type="${type}" allowBlank="1" showErrorMessage="1" errorTitle="Проверьте ввод" error="${shtXmlEsc(message)}" sqref="${ref}">${formulas.map((f,i)=>`<formula${i+1}>${shtXmlEsc(f)}</formula${i+1}>`).join('')}</dataValidation>`;
+ if(records.length){
+  const stateRules=ref=>ganttStates.map(([name],i)=>[`${ref}="${name}"`,i]);
+  graphConditions+=graphCf(`C8:C${graphEnd}`,stateRules('$Y8'));
+  graphConditions+=graphCf(`D8:D${graphEnd}`,[['ISNUMBER(SEARCH("сверить",$D8))',3]]);
+  graphConditions+=graphCf(`F8:F${graphEnd}`,[['OR(ISNUMBER(SEARCH("+",$F8)),$C8="Просрочено",$F8="Сверить даты",$F8="Сверить дату оценки")',3]]);
+  graphConditions+=`<conditionalFormatting sqref="E8:E${graphEnd}"><cfRule type="dataBar" priority="100"><dataBar minLength="0" maxLength="100" showValue="0"><cfvo type="num" val="0"/><cfvo type="num" val="1"/><color rgb="FF4C8C85"/></dataBar></cfRule></conditionalFormatting>`;
+  const span=`ISNUMBER(K$7),${dateOk('$H8')},${dateOk('$I8')},K$7>=$H8,K$7<=$I8`;
+  graphConditions+=graphCf(`K8:X${graphEnd}`,[
+   ...ganttStates.flatMap(([name],i)=>[[`AND($J8="ФАКТ",$Y8="${name}",${span})`,5+i],[`AND($J8="ФАКТ",$Y8="${name}",K8="◆")`,10+i]]),
+   [`AND($J8="ПЛАН",${span})`,15],
+   ['AND($J8<>"",ISNUMBER(K$7),IFERROR(WEEKDAY(K$7,2)>5,FALSE))',16]
+  ]);
+  // Keep the marker's text color while letting lower-priority rules shade weekends.
+  dataConditions=dataCf(`J${first}:J${last}`,stateRules('$J'+first))
+   +dataCf(`K${first}:K${last}`,[[`OR($Q${first}>0,$J${first}="Просрочено",$K${first}="Сверить даты",$K${first}="Сверить дату оценки")`,3]])
+   +dataCf(`I${first}:I${last}`,[[`OR($R${first}="Вне диапазона",AND($J${first}="Выполнено",ISNUMBER($I${first}),$I${first}<1))`,3]]);
+  dataValidation=`<dataValidations count="2">${validate('list',`H${first}:H${last}`,[formulaText(known.join(','))],'Выберите статус из списка.')}${validate('decimal',`I${first}:I${last}`,[0,1],'Введите значение от 0% до 100%, например 35%.')}</dataValidations>`;
+ }
+ const graphValidation=`<dataValidations count="2">${validate('custom','E4',[dateOk('E4')],'Введите дату оценки.')}${validate('custom','H4',[validWindow],'Введите начало, для которого доступны 14 календарных дней.')}</dataValidations>`;
+ const sheet1=shtSheetXml(graph,[5,31,15,14,15,21,16,7,7,10,...Array(14).fill(7),0,0],{
+  merge:graphMerge,conditional:graphConditions,validation:graphValidation,print:true,zoom:100,
+  pane:'<pane xSplit="5" ySplit="7" topLeftCell="F8" activePane="bottomRight" state="frozen"/><selection pane="topRight" activeCell="F1" sqref="F1"/><selection pane="bottomLeft" activeCell="A8" sqref="A8"/><selection pane="bottomRight" activeCell="F8" sqref="F8"/>'
+ });
+ const sheet2=shtSheetXml(data,[6,39,17,14,14,14,14,18,15,16,26,35,10,30,23,0,0,0,0],{
+  merge:dataMerge,conditional:dataConditions,validation:dataValidation,zoom:100,
+  autoFilter:records.length?`A16:S${last}`:'',
+  pane:'<pane xSplit="2" ySplit="16" topLeftCell="C17" activePane="bottomRight" state="frozen"/><selection pane="topRight" activeCell="C1" sqref="C1"/><selection pane="bottomLeft" activeCell="A17" sqref="A17"/><selection pane="bottomRight" activeCell="C17" sqref="C17"/>'
+ });
+ return {styles,sheet1,sheet2,printEnd:graph.at(-1).index};
+}
+
+function exportScheduleXlsx(){
+ const date=today(),assessment=ganttDate(date);
+ const candidate=ganttDate(document.getElementById('scheduleViewStart').value||date);
+ const start=typeof candidate==='number'&&candidate<=2958452&&(candidate>=61||candidate<=46)?candidate:assessment;
+ const {styles,sheet1,sheet2,printEnd}=ganttWorkbook(scheduleFlatRows(),start,assessment);
+
  const files={
   '[Content_Types].xml':'<?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>',
   '_rels/.rels':'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
-  'xl/workbook.xml':'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="График" sheetId="1" r:id="rId1"/><sheet name="Сводка" sheetId="2" r:id="rId2"/></sheets><calcPr calcId="191029" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>',
+  'xl/workbook.xml':`<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><bookViews><workbookView activeTab="0"/></bookViews><sheets><sheet name="График" sheetId="1" r:id="rId1"/><sheet name="Сводка" sheetId="2" r:id="rId2"/></sheets><definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">График!$A$1:$X${printEnd}</definedName><definedName name="_xlnm.Print_Titles" localSheetId="0">График!$1:$7</definedName></definedNames><calcPr calcId="191029" fullCalcOnLoad="1" forceFullCalc="1"/></workbook>`,
   'xl/_rels/workbook.xml.rels':'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>',
-  'xl/styles.xml':shtStyles,'xl/worksheets/sheet1.xml':sheet1,'xl/worksheets/sheet2.xml':sheet2
+  'xl/styles.xml':styles,'xl/worksheets/sheet1.xml':sheet1,'xl/worksheets/sheet2.xml':sheet2
  };
- const file=shtZip(files),url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download='grafik-rabot-'+today()+'.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
+ const file=shtZip(files),url=URL.createObjectURL(file),a=document.createElement('a');a.href=url;a.download='grafik-rabot-'+date+'.xlsx';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),30000);
 }
 
 document.getElementById('exportScheduleExcel').addEventListener('click',()=>{try{exportScheduleXlsx()}catch(err){console.error(err);alert('Не удалось подготовить Excel: '+err.message)}});
