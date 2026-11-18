@@ -1364,13 +1364,19 @@ const ganttStates=[
 ];
 const ganttProgress=['0%','Больше 0%, меньше 50%','50% и выше, меньше 100%','100%','Нет данных','Вне диапазона'];
 
+// Keep rounded labels away from 100% unless the underlying value is exactly 1.
+const ganttPctBelowFull=0.99994,ganttPctAboveFull=1.00006;
+
 function ganttStyles(){
  const fills=['16394A','DCEAF0','FFF2D8','E0ECF3','EEF3F5',...ganttStates.map(s=>s[1])];
  const rgb=color=>'FF'+color;
  const font=(size,color,bold=false)=>`<font>${bold?'<b/>':''}<sz val="${size}"/><color rgb="${rgb(color)}"/><name val="Calibri"/></font>`;
  const fill=(color,differential=false)=>`<fill><patternFill patternType="solid"><fgColor rgb="${rgb(color)}"/>${differential?`<bgColor rgb="${rgb(color)}"/>`:'<bgColor indexed="64"/>'}</patternFill></fill>`;
  const dxf=(background,foreground)=>`<dxf>${foreground?`<font><b/><color rgb="${rgb(foreground)}"/></font>`:''}${background?fill(background,true):''}</dxf>`;
- const dxfs=[...ganttStates.map(s=>dxf(s[1],s[3])),...ganttStates.map(s=>dxf(s[2])),...ganttStates.map(s=>dxf(null,s[2])),dxf('DDECF4'),dxf('F2F6F8'),dxf('3D706D','FFFFFF')];
+ const dxfs=[...ganttStates.map(s=>dxf(s[1],s[3])),...ganttStates.map(s=>dxf(s[2])),...ganttStates.map(s=>dxf(null,s[2])),dxf('DDECF4'),dxf('F2F6F8'),dxf('3D706D','FFFFFF'),
+  '<dxf><numFmt numFmtId="168" formatCode="0.0#%"/></dxf>',
+  '<dxf><numFmt numFmtId="169" formatCode="[&lt;1]&quot;&lt;100%&quot;;&quot;&gt;100%&quot;"/></dxf>'
+ ];
  const fonts=[font(11,'18323F'),font(11,'FFFFFF',true),font(22,'18323F',true),font(11,'16394A',true),font(11,'486473')];
  const definitions={
   text:[0,0,0,'left',1], number:[3,0,0,'center',1], header:[1,2,0,'center',1], day:[1,2,166,'center',0],
@@ -1464,7 +1470,7 @@ function ganttWorkbook(records,windowStart,assessment){
  if(!records.length){row=d(first);row('1:15','В графике пока нет этапов.','note')}
  rows.forEach(({x,start,end,count,source,status,signal,no},i)=>{
   const r=first+i,planOk=`AND(${dateOk('D'+r)},${dateOk('E'+r)},E${r}>=D${r})`;
-  const factOk=`AND(OR(F${r}="",${dateOk('F'+r)}),OR(G${r}="",AND(${dateOk('F'+r)},${dateOk('G'+r)},G${r}>=F${r})))`;
+  const factOk=`AND(OR(F${r}="",${dateOk('F'+r)}),OR(G${r}="",${dateOk('G'+r)}),OR(F${r}="",G${r}="",G${r}>=F${r}))`;
   const overdue=`AND(${planOk},${dateOk(assessmentRef)},E${r}<${assessmentRef})`;
   row=d(r,Math.min(409,Math.max(26,13*Math.ceil(Math.max(String(x.title||'').length/37,String(x.notes||'').length/35)))));
   row(1,no,'number');row(2,x.title,'work');row(3,x.assignee);
@@ -1506,7 +1512,8 @@ function ganttWorkbook(records,windowStart,assessment){
   const name=x.kind==='Стадия'?(x.parentTitle?'↳ '+x.parentTitle+' / ':'↳ ')+(x.title||''):x.title||'';
   const nameF=`IF($Z${r}=0,"",IF(${fromData('M',r)}="Стадия","↳ "&IF(${fromData('N',r)}="","",${fromData('N',r)}&" / "),"")&${fetch('B',r)})`;
   const group=fromData('R',r),pct=fromData('I',r);
-  const pctCalc=`IF($Z${r}=0,"",IF(${group}="Нет данных","Нет данных",IF(NOT(ISNUMBER(${pct})),"сверить ввод",IFERROR(ROUND(${pct}*100,2)&"%","Вне диапазона")&IF(OR(${group}="Вне диапазона",AND($C${r}="Выполнено",${pct}<1))," · сверить",""))))`;
+  const pctLabel=`IF(AND(${pct}>=${ganttPctBelowFull},${pct}<1),"<100%",IF(AND(${pct}>1,${pct}<=${ganttPctAboveFull}),">100%",IFERROR(ROUND(${pct}*100,2)&"%","Вне диапазона")))`;
+  const pctCalc=`IF($Z${r}=0,"",IF(${group}="Нет данных","Нет данных",IF(NOT(ISNUMBER(${pct})),"сверить ввод",${pctLabel}&IF(OR(${group}="Вне диапазона",AND($C${r}="Выполнено",${pct}<1))," · сверить",""))))`;
   const height=Math.min(409,Math.max(20,6.5*Math.ceil(name.length/31)+3));
   for(const p of [r,f]){
    const plan=p===r;row=g(p,height);
@@ -1549,9 +1556,14 @@ function ganttWorkbook(records,windowStart,assessment){
    ['AND($J8<>"",ISNUMBER(K$7),IFERROR(WEEKDAY(K$7,2)>5,FALSE))',16]
   ]);
   // Keep the marker's text color while letting lower-priority rules shade weekends.
+  const inputPct='$I'+first;
   dataConditions=dataCf(`J${first}:J${last}`,stateRules('$J'+first))
    +dataCf(`K${first}:K${last}`,[[`OR($Q${first}>0,$J${first}="Просрочено",$K${first}="Сверить даты",$K${first}="Сверить дату оценки")`,3]])
-   +dataCf(`I${first}:I${last}`,[[`OR($R${first}="Вне диапазона",AND($J${first}="Выполнено",ISNUMBER($I${first}),$I${first}<1))`,3]]);
+   +dataCf(`I${first}:I${last}`,[
+    [`AND(ISNUMBER(${inputPct}),${inputPct}>=${ganttPctBelowFull},${inputPct}<=${ganttPctAboveFull},${inputPct}<>1)`,19],
+    [`IFERROR(AND(ISNUMBER(${inputPct}),${inputPct}<>ROUND(${inputPct},2)),FALSE)`,18],
+    [`OR($R${first}="Вне диапазона",AND($J${first}="Выполнено",ISNUMBER(${inputPct}),${inputPct}<1))`,3]
+   ]);
   dataValidation=`<dataValidations count="2">${validate('list',`H${first}:H${last}`,[formulaText(known.join(','))],'Выберите статус из списка.')}${validate('decimal',`I${first}:I${last}`,[0,1],'Введите значение от 0% до 100%, например 35%.')}</dataValidations>`;
  }
  const graphValidation=`<dataValidations count="2">${validate('custom','E4',[dateOk('E4')],'Введите дату оценки.')}${validate('custom','H4',[validWindow],'Введите начало, для которого доступны 14 календарных дней.')}</dataValidations>`;

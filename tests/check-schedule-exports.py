@@ -28,10 +28,10 @@ def read_xlsx(name, *, schedule=False):
         parts = {part: ET.fromstring(archive.read(part)) for part in archive.namelist()
                  if part.endswith(('.xml', '.rels'))}
     dxfs = parts['xl/styles.xml'].find('s:dxfs', ns)
-    assert int(dxfs.attrib['count']) == len(dxfs) == (18 if schedule else 3), name
+    assert int(dxfs.attrib['count']) == len(dxfs) == (20 if schedule else 3), name
     if schedule:
         for dxf in dxfs:
-            assert tags(dxf) in (['font', 'fill'], ['font'], ['fill']), (name, tags(dxf))
+            assert tags(dxf) in (['font', 'fill'], ['font'], ['fill'], ['numFmt']), (name, tags(dxf))
             pattern = dxf.find('s:fill/s:patternFill', ns)
             if pattern is not None:
                 assert pattern.find('s:fgColor', ns).attrib == pattern.find('s:bgColor', ns).attrib
@@ -108,6 +108,13 @@ assert [val(grid, f'B{r}') for r in (8, 10, 12, 14, 22)] == [
     'Фундамент', '↳ Фундамент / Армирование', '↳ Фундамент / Армирование',
     'Земляные работы / разработка котлована и вывоз грунта', 'Монтаж опалубки']
 assert val(grid, 'F14') == 'Дата финиша неизвестна'
+assert 'OR(F20="",G20="",G20>=F20)' in formula(totals, 'K20')
+assert 'OR(F20="",G20="",G20>=F20)' in formula(totals, 'Q20')
+assert '"<100%"' in formula(grid, 'D14')
+formats = read_xlsx('d01-schedule.xlsx', schedule=True)['xl/styles.xml'].findall('s:dxfs/s:dxf/s:numFmt', ns)
+assert [f.attrib['formatCode'] for f in formats] == ['0.0#%', '[<1]"<100%";">100%"']
+pct_rules = summary.findall("s:conditionalFormatting[@sqref='I17:I24']/s:cfRule", ns)
+assert [rule.attrib['dxfId'] for rule in pct_rules] == ['19', '18', '3']
 assert val(grid, 'C10') == 'Просрочено' and val(grid, 'F10') == 'Просрочено +2 дн.'
 assert val(grid, 'C20') == 'Нет данных'
 assert inline(totals, 'L18') == 'Проверить крепления'

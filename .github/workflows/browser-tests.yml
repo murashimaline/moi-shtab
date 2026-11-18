@@ -54,3 +54,5 @@ jobs:
         with:
           name: synthetic-browser-results
           path: .browser-results/
+          include-hidden-files: true
+          if-no-files-found: error
