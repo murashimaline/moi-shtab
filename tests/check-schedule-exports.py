@@ -22,13 +22,20 @@ def cells(sheet):
     return {cell.attrib['r']: cell for cell in sheet.findall('.//s:c', ns)}
 
 
-def read_xlsx(name):
+def read_xlsx(name, *, schedule=False):
     with ZipFile(root / name) as archive:
         assert archive.testzip() is None, name
         parts = {part: ET.fromstring(archive.read(part)) for part in archive.namelist()
                  if part.endswith(('.xml', '.rels'))}
     dxfs = parts['xl/styles.xml'].find('s:dxfs', ns)
-    assert dxfs.attrib['count'] == '3' and len(dxfs) == 3, name
+    assert int(dxfs.attrib['count']) == len(dxfs) == (20 if schedule else 3), name
+    if schedule:
+        for dxf in dxfs:
+            assert tags(dxf) in (['font', 'fill'], ['font'], ['fill'], ['numFmt']), (name, tags(dxf))
+            pattern = dxf.find('s:fill/s:patternFill', ns)
+            if pattern is not None:
+                assert pattern.find('s:fgColor', ns).attrib == pattern.find('s:bgColor', ns).attrib
+        return parts
     for dxf, (font, fill) in zip(dxfs, colors):
         assert tags(dxf) == ['font', 'fill'], (name, tags(dxf))
         assert dxf.find('s:font/s:color', ns).attrib['rgb'] == font
@@ -41,45 +48,89 @@ def check_order(sheet, *tail):
     assert tags(sheet) == ['sheetViews', 'sheetFormatPr', 'cols', 'sheetData', *tail, 'pageMargins'], tags(sheet)
 
 
-schedule = read_xlsx('d01-schedule.xlsx')
-assert [sheet.attrib['name'] for sheet in schedule['xl/workbook.xml'].findall('s:sheets/s:sheet', ns)] == ['График', 'Сводка']
-gantt = schedule['xl/worksheets/sheet1.xml']
-check_order(gantt, 'autoFilter', 'mergeCells', 'conditionalFormatting', 'conditionalFormatting')
-assert gantt.find('s:autoFilter', ns).attrib['ref'] == 'A6:K9'
-assert [m.attrib['ref'] for m in gantt.findall('s:mergeCells/s:mergeCell', ns)] == ['A1:K1', 'A2:K2', 'A4:K4', 'A5:K5']
-assert gantt.find('s:sheetViews/s:sheetView/s:pane', ns).attrib['topLeftCell'] == 'E7'
-columns = gantt.findall('s:cols/s:col', ns)
-assert [int(col.attrib['width']) for col in columns[:11]] == [15, 25, 37, 26, 17, 17, 21, 23, 17, 21, 40]
-assert [(int(col.attrib['min']), int(col.attrib['max']), int(col.attrib['width'])) for col in columns[11:]] == [
-    (i, i, 7) for i in range(12, 26)]
-groups = gantt.findall('s:conditionalFormatting', ns)
-assert [group.attrib['sqref'] for group in groups] == ['A7:K9', 'L7:Y9']
-statuses = ['Задержка', 'В срок', 'Запланировано']
-for group_index, group in enumerate(groups):
-    rules = group.findall('s:cfRule', ns)
-    assert len(rules) == 3
-    for i, rule in enumerate(rules):
-        assert rule.attrib == {'type': 'expression', 'dxfId': str(i), 'priority': str(1 + i + 3 * group_index)}
-        status = f'$H7="{statuses[i]}"'
-        expected = f'AND(L$6>=$E7,L$6<=$F7,{status})' if group_index else status
-        assert rule.findtext('s:formula', namespaces=ns) == expected
+def val(grid, address):
+    return grid[address].findtext('s:v', namespaces=ns)
 
-grid = cells(gantt)
-assert [grid[f'C{i}'].findtext('s:is/s:t', namespaces=ns) for i in range(7, 10)] == [
-    'Тестовый этап', '  ↳ Тестовая стадия', 'Будущий этап']
-first_day = int(grid['L6'].findtext('s:v', namespaces=ns))
-for i, col in enumerate('LMNOPQRSTUVWXY'):
-    cell = grid[f'{col}6']
-    assert cell.attrib['s'] == '6'
-    assert int(cell.findtext('s:v', namespaces=ns)) == first_day + i
-    assert cell.findtext('s:f', namespaces=ns) == (f'{chr(ord(col) - 1)}6+1' if i else None)
-assert [grid[f'H{i}'].findtext('s:v', namespaces=ns) for i in range(7, 10)] == statuses
-assert all(grid[f'{col}{row}'].find('s:f', ns) is not None for row in range(7, 10) for col in 'HIJ')
-summary = schedule['xl/worksheets/sheet2.xml']
-check_order(summary, 'mergeCells')
-totals = cells(summary)
-assert [totals[f'B{i}'].findtext('s:v', namespaces=ns) for i in range(4, 10)] == ['2', '1', '1', '1', '1', '3']
-assert totals['B9'].findtext('s:f', namespaces=ns) == "COUNTA('График'!C7:C9)"
+
+def inline(grid, address):
+    return grid[address].findtext('s:is/s:t', namespaces=ns)
+
+
+def formula(grid, address):
+    return grid[address].findtext('s:f', namespaces=ns)
+
+
+def schedule_parts(name):
+    book = read_xlsx(name, schedule=True)
+    meta = book['xl/workbook.xml']
+    assert [s.attrib['name'] for s in meta.findall('s:sheets/s:sheet', ns)] == ['График', 'Сводка']
+    assert meta.find('s:calcPr', ns).attrib['fullCalcOnLoad'] == '1'
+    graph, summary = (book[f'xl/worksheets/sheet{i}.xml'] for i in (1, 2))
+    assert graph.find('s:pageSetup', ns).attrib == {
+        'paperSize': '8', 'orientation': 'landscape', 'fitToWidth': '1', 'fitToHeight': '0'}
+    assert graph.find('s:sheetViews/s:sheetView/s:pane', ns).attrib['topLeftCell'] == 'F8'
+    assert summary.find('s:sheetViews/s:sheetView/s:pane', ns).attrib['topLeftCell'] == 'C17'
+    cols = graph.findall('s:cols/s:col', ns)
+    assert len(cols) == 26 and all(float(col.attrib['width']) >= 7 for col in cols[10:24])
+    assert all(col.attrib['hidden'] == '1' for col in cols[-2:])
+    for sheet in (graph, summary):
+        order = tags(sheet)
+        assert all(order.index(a) < order.index(b) for a, b in [
+            ('sheetViews', 'sheetData'), ('sheetData', 'mergeCells'), ('mergeCells', 'pageMargins')])
+        if 'autoFilter' in order:
+            assert order.index('sheetData') < order.index('autoFilter') < order.index('mergeCells')
+        for tag in ('conditionalFormatting', 'dataValidations'):
+            if tag in order:
+                assert order.index('mergeCells') < order.index(tag) < order.index('pageMargins')
+    return graph, summary
+
+
+graph, summary = schedule_parts('d01-schedule.xlsx')
+grid, totals = cells(graph), cells(summary)
+assert graph.find('s:autoFilter', ns) is None
+assert summary.find('s:autoFilter', ns).attrib['ref'] == 'A16:S24'
+bar = graph.find('s:conditionalFormatting/s:cfRule/s:dataBar', ns)
+assert bar.attrib == {'minLength': '0', 'maxLength': '100', 'showValue': '0'}
+assert summary.find("s:dataValidations/s:dataValidation[@type='decimal']", ns).attrib['sqref'] == 'I17:I24'
+assert graph.find("s:conditionalFormatting[@sqref='K8:X23']", ns) is not None
+assert val(grid, 'K6') == '27.12 — 02.01' and val(grid, 'R6') == '03.01 — 09.01'
+assert [int(val(grid, f'{col}7')) - int(val(grid, 'K7')) for col in 'KLMNOPQRSTUVWX'] == list(range(14))
+assert all('$H$4' in formula(grid, f'{col}7') for col in 'KLMNOPQRSTUVWX')
+for i in range(8):
+    r, s = 8 + 2*i, 17 + i
+    assert [val(grid, f'J{r}'), val(grid, f'J{r+1}')] == ['ПЛАН', 'ФАКТ']
+    assert val(grid, f'D{r}') == 'Нет данных'
+    assert [val(grid, f'{c}{r+1}') for c in 'HI'] == ['', '']
+    assert all(totals[f'{c}{s}'].find('s:v', ns) is None for c in 'FGI')
+    assert 'MATCH(' in formula(grid, f'Z{r}') and formula(grid, f'Z{r+1}') == f'$Z{r}'
+    assert 'SUBTOTAL(103,' in formula(totals, f'S{s}')
+assert [val(grid, f'B{r}') for r in (8, 10, 12, 14, 22)] == [
+    'Фундамент', '↳ Фундамент / Армирование', '↳ Фундамент / Армирование',
+    'Земляные работы / разработка котлована и вывоз грунта', 'Монтаж опалубки']
+assert val(grid, 'F14') == 'Дата финиша неизвестна'
+assert 'OR(F20="",G20="",G20>=F20)' in formula(totals, 'K20')
+assert 'OR(F20="",G20="",G20>=F20)' in formula(totals, 'Q20')
+assert '"<100%"' in formula(grid, 'D14')
+formats = read_xlsx('d01-schedule.xlsx', schedule=True)['xl/styles.xml'].findall('s:dxfs/s:dxf/s:numFmt', ns)
+assert [f.attrib['formatCode'] for f in formats] == ['0.0#%', '[<1]"<100%";">100%"']
+pct_rules = summary.findall("s:conditionalFormatting[@sqref='I17:I24']/s:cfRule", ns)
+assert [rule.attrib['dxfId'] for rule in pct_rules] == ['19', '18', '3']
+assert val(grid, 'C10') == 'Просрочено' and val(grid, 'F10') == 'Просрочено +2 дн.'
+assert val(grid, 'C20') == 'Нет данных'
+assert inline(totals, 'L18') == 'Проверить крепления'
+assert inline(totals, 'N18') == 'Фундамент' and inline(totals, 'O18') == 'Тестовый объект'
+assert [val(totals, f'C{i}') for i in range(6, 13)] == ['1', '1', '1', '3', '1', '7', '0']
+assert val(totals, 'I10') == '7'
+assert len(set(val(grid, f'A{r}') for r in range(8, 24, 2))) == 8
+
+empty, empty_summary = schedule_parts('vg01-empty.xlsx')
+assert empty_summary.find('s:autoFilter', ns) is None
+assert val(cells(empty_summary), 'C11') == '0'
+assert not any('Сводка' in f.text for f in empty.findall('.//s:f', ns))
+single, single_summary = schedule_parts('vg01-mobile.xlsx')
+assert val(cells(single), 'H8') == val(cells(single), 'I8')
+assert val(cells(single), 'J8') == 'ПЛАН' and val(cells(single), 'J9') == 'ФАКТ'
+assert val(cells(single_summary), 'C11') == '1'
 
 for name in ('d01-expenses.xlsx', 'd01-missing-expenses.xlsx', 'd01-advance-missing.xlsx'):
     sheet = read_xlsx(name)['xl/worksheets/sheet1.xml']
@@ -94,4 +145,4 @@ assert [c.text for c in warehouse_rows[1].findall('ss:Cell/ss:Data', ss)][4:6] =
 assert 'Выдача' in [c.text for c in warehouse_rows[3].findall('ss:Cell/ss:Data', ss)]
 timesheet = ET.parse(root / 'd01-timesheet.xls')
 assert '6000' in [d.text for d in timesheet.findall('.//ss:Data', ss)]
-print('D01: XML order, Gantt formulas, three colors, summary, expenses, warehouse and timesheet: PASS')
+print('VG01: workbook structure, formulas, empty and single-day exports, expenses, warehouse and timesheet: PASS')
