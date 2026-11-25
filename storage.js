@@ -164,7 +164,8 @@ function validateRecord(k,r,path,fail,links){
   if(['name','title','notes','address','manager','trade','phone','objectId','workerId','itemId','status','kind','assignee','category','vendor','source','paymentSource','shiftType','importSourceKey','importFingerprint','serial','unit','condition','adjustmentReason','objectName','sourceFile'].includes(key)&&v!=null&&typeof v!=='string')fail(path+'.'+key);
   if(['photos','workerIds','sourceKeys'].includes(key)){if(!Array.isArray(v)||v.some(s=>typeof s!=='string'))fail(path+'.'+key)}
   else if(['receipts','substeps','review'].includes(key)){if(!Array.isArray(v)||v.some(s=>!object(s)))fail(path+'.'+key)}
-  else if(v!==null&&!['string','number','boolean'].includes(typeof v))fail(path+'.'+key);
+  // Schedule extensions are opaque JSON, not sources for calculated actuals.
+  else if(k!=='schedule'&&v!==null&&!['string','number','boolean'].includes(typeof v))fail(path+'.'+key);
   if(['amount','rate','ratePerShift','shifts','hours','fine','deduction','qty','baseQty','workersCount'].includes(key)&&v!==null&&(typeof v!=='number'&&typeof v!=='string'||!Number.isFinite(Number(v))||Number(v)<0))fail(path+'.'+key);
   if(['date','due','start','end'].includes(key)&&v!==''&&v!=null&&(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)||!Number.isFinite(Date.parse(v))||new Date(v).toISOString().slice(0,10)!==v))fail(path+'.'+key);
  }
@@ -179,7 +180,7 @@ function validateRecord(k,r,path,fail,links){
  }
  for(const field of (['objects','workers','warehouse'].includes(k)?['name']:['tasks','schedule'].includes(k)?['title']:[]))if(typeof r[field]!=='string'||!r[field].trim())fail(path+'.'+field);
  for(const receipt of r.receipts||[])if(typeof receipt.data!=='string'||typeof receipt.name!=='string'||receipt.verified!==undefined&&typeof receipt.verified!=='boolean')fail(path+'.receipts');
- for(const s of r.substeps||[])if(typeof s.title!=='string'||!s.title.trim()||!validDate(s.start)||!validDate(s.end)||s.end<s.start||Object.values(s).some(v=>typeof v!=='string'))fail(path+'.substeps');
+ for(const s of r.substeps||[])if(typeof s.title!=='string'||!s.title.trim()||!validDate(s.start)||!validDate(s.end)||s.end<s.start||Object.entries(s).some(([key,v])=>(k!=='schedule'||['id','title','start','end','assignee','status','notes','objectId'].includes(key))&&typeof v!=='string'))fail(path+'.substeps');
  for(const row of r.review||[])if(!validDate(row.date)||['sheet','cell','workerName','reason'].some(key=>typeof row[key]!=='string')||!['string','number'].includes(typeof row.rawValue))fail(path+'.review');
 }
 function validate(data,{links=true}={}){
@@ -218,9 +219,41 @@ function validate(data,{links=true}={}){
  }
  return next;
 }
+// Compare decimal values, not spelling or binary floating-point approximations.
+function assertJsonNumberSafety(source){
+ // Syntax is checked independently; its rounded result is deliberately discarded.
+ // Malformed quoted text must never become a numerical write lock.
+ JSON.parse(source);
+ const fail=message=>{const error=Error(message);error.code='JSON_NUMBER_PRECISION';throw error;};
+ const canonical=token=>{
+  if(token.length>100000)fail('Предел проверки точности исходных чисел JSON.');
+  const match=/^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  let digits=(match[2]+(match[3]||'')).replace(/^0+/,'');
+  if(!digits)return '0';
+  const exponent=Number(match[4]||0);
+  if(!Number.isSafeInteger(exponent)||Math.abs(exponent)>1000000)fail('Предел проверки точности исходных чисел JSON.');
+  let trailing=0;while(trailing<digits.length&&digits[digits.length-1-trailing]==='0')trailing++;
+  digits=digits.slice(0,digits.length-trailing);
+  return match[1]+digits+'e'+(exponent-(match[3]||'').length+trailing);
+ };
+ // A forward-only scan of syntactically valid JSON. Escapes consume two code units.
+ for(let i=0;i<source.length;){
+  const char=source[i];
+  if(char==='"'){
+   i++;
+   while(i<source.length){if(source[i]==='\\'){i+=2;continue;}if(source[i++]==='"')break;}
+  }else if(char==='-'||char>='0'&&char<='9'){
+   const start=i++;
+   while(i<source.length&&'0123456789.eE+-'.includes(source[i]))i++;
+   const token=source.slice(start,i),value=Number(token);
+   if(!Number.isFinite(value)||canonical(token)!==canonical(JSON.stringify(value)))fail('Исходное число JSON '+token.slice(0,80)+' нельзя сохранить без изменения точного значения.');
+  }else i++;
+ }
+}
+function parseJsonSafely(source){assertJsonNumberSafety(source);return JSON.parse(source);}
 function create(storage,key,empty){
- let raw=null,confirmed=empty(),blocked=false,conflict=false,error='';
- try{raw=storage.getItem(key);if(raw!==null)confirmed=validate(JSON.parse(raw),{links:false})}catch(e){blocked=true;error=e.message}
+ let raw=null,confirmed=empty(),blocked=false,conflict=false,error='',numberError='';
+ try{raw=storage.getItem(key);if(raw!==null){try{assertJsonNumberSafety(raw)}catch(e){if(e.code==='JSON_NUMBER_PRECISION')numberError='Обычные операции записи в текущую базу заблокированы: '+e.message+' Доступна непроверенная выгрузка точного исходного JSON. Специальное восстановление ещё не реализовано.';throw numberError?Error(numberError):e}confirmed=validate(JSON.parse(raw),{links:false})}}catch(e){blocked=true;error=e.message}
  return {
   initial:()=>clone(confirmed), readSnapshot:()=>clone(confirmed),
   capabilities:()=>capabilities,
@@ -238,10 +271,12 @@ function create(storage,key,empty){
    if(storage.getItem(key)!==source)throw Error('Источник изменился во время подготовки JSON. Повторите экспорт после перезагрузки.');
    return source;
   },
-  status:()=>({blocked,conflict,error,raw}),
+  status:()=>({blocked,conflict,error,raw,numberBlocked:Boolean(numberError)}),
   observe(event){if(event.key===key||event.key===null){if(event.newValue!==raw){conflict=true;return true}}return false},
   commit(candidate,{importing=false,recordChanges=[],attendanceBatch=false}={}){
    try{
+    if(numberError)throw Error(numberError);
+    if(raw!==null&&!blocked)assertJsonNumberSafety(raw);
     if(blocked&&!importing)throw Error('База не загружена. Сначала восстановите резервную копию.');
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
     // Every successful save must be restorable with the same strict validator.
@@ -795,5 +830,5 @@ function diagnoseRaw(raw){
   }
  return done(complete);
 }
-const api={diagnoseRaw,validate,create,createDataStore:create,createIdAllocator,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses,attendanceShifts,attendanceAccrualCents};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
+const api={parseJsonSafely,diagnoseRaw,validate,create,createDataStore:create,createIdAllocator,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses,attendanceShifts,attendanceAccrualCents};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
 })(globalThis);

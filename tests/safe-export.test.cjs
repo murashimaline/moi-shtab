@@ -12,10 +12,10 @@ test('P2 exports exact saved JSON, preserving whitespace, extensions, attachment
  assert.deepEqual(state(s),before);assert.deepEqual(s.disk.writes,[]);assert.equal(JSON.parse(s.raw).financeHistory.length,2);
  const exported=JSON.parse(s.store.prepareJsonExport());assert.deepEqual(validate(exported).works,exported.works);
 });
-test('P2 exports raw numeric lexemes without a parse/serialize round trip',()=>{
+test('D02 unsafe numeric source remains available as raw recovery without writes',()=>{
  const data=fixture();data.objects[0].first='FIRST';data.objects[0].second='SECOND';data.objects[0].third='THIRD';
  const raw=JSON.stringify(data).replace('"FIRST"','1.0000000000000001').replace('"SECOND"','1e-400').replace('"THIRD"','9007199254740993');
- const s=setup(raw),before=state(s);assert.equal(s.store.prepareJsonExport(),raw);assert.deepEqual(state(s),before);assert.deepEqual(s.disk.writes,[]);
+ const s=setup(raw),before=state(s);assert.throws(()=>s.store.prepareJsonExport(),/заблокирована/);assert.equal(s.store.readRaw(),raw);assert.equal(s.store.commit(fixture(),{importing:true}).ok,false);assert.deepEqual(state(s),before);assert.deepEqual(s.disk.writes,[]);
 });
 test('P2 never serializes an edited UI snapshot or fills absent optional collections',()=>{
  const s=setup(),edited=s.store.readSnapshot();edited.objects[0].name='unsaved';edited.works[0].photos=[];
