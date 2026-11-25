@@ -219,9 +219,30 @@ function validate(data,{links=true}={}){
  }
  return next;
 }
+// Compare decimal values, not spelling or binary floating-point approximations.
+function assertJsonNumberSafety(source){
+ const canonical=token=>{
+  const match=/^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  if(!match||token.length>100000)throw Error('Предел проверки точности исходных чисел JSON. Запись заблокирована.');
+  let digits=(match[2]+(match[3]||'')).replace(/^0+/,'');
+  if(!digits)return '0';
+  const exponent=Number(match[4]||0);
+  if(!Number.isSafeInteger(exponent)||Math.abs(exponent)>1000000)throw Error('Предел проверки точности исходных чисел JSON. Запись заблокирована.');
+  const trailing=/0+$/.exec(digits)?.[0].length||0;
+  digits=digits.slice(0,digits.length-trailing);
+  return match[1]+digits+'e'+(exponent-(match[3]||'').length+trailing);
+ };
+ source.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g,token=>{
+  if(token[0]==='"')return token;
+  const value=Number(token);
+  if(!Number.isFinite(value)||canonical(token)!==canonical(JSON.stringify(value)))throw Error('Исходное число JSON '+token.slice(0,80)+' нельзя сохранить без изменения точного значения. Все операции записи заблокированы. Скачайте исходный JSON.');
+  return token;
+ });
+}
+function parseJsonSafely(source){assertJsonNumberSafety(source);return JSON.parse(source);}
 function create(storage,key,empty){
- let raw=null,confirmed=empty(),blocked=false,conflict=false,error='';
- try{raw=storage.getItem(key);if(raw!==null)confirmed=validate(JSON.parse(raw),{links:false})}catch(e){blocked=true;error=e.message}
+ let raw=null,confirmed=empty(),blocked=false,conflict=false,error='',numberError='';
+ try{raw=storage.getItem(key);if(raw!==null){try{assertJsonNumberSafety(raw)}catch(e){numberError=e.message;throw e}confirmed=validate(JSON.parse(raw),{links:false})}}catch(e){blocked=true;error=e.message}
  return {
   initial:()=>clone(confirmed), readSnapshot:()=>clone(confirmed),
   capabilities:()=>capabilities,
@@ -243,6 +264,8 @@ function create(storage,key,empty){
   observe(event){if(event.key===key||event.key===null){if(event.newValue!==raw){conflict=true;return true}}return false},
   commit(candidate,{importing=false,recordChanges=[],attendanceBatch=false}={}){
    try{
+    if(numberError)throw Error(numberError);
+    if(raw!==null)assertJsonNumberSafety(raw);
     if(blocked&&!importing)throw Error('База не загружена. Сначала восстановите резервную копию.');
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
     // Every successful save must be restorable with the same strict validator.
@@ -796,5 +819,5 @@ function diagnoseRaw(raw){
   }
  return done(complete);
 }
-const api={diagnoseRaw,validate,create,createDataStore:create,createIdAllocator,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses,attendanceShifts,attendanceAccrualCents};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
+const api={parseJsonSafely,diagnoseRaw,validate,create,createDataStore:create,createIdAllocator,reference,resolveReference,referenceTargets,protectClosedReports,financialChanges,salaryExpenseHint,salaryExpense,protectSalaryExpenses,attendanceShifts,attendanceAccrualCents};if(typeof module!=='undefined')module.exports=api;else root.ProrabkaStorage=api;
 })(globalThis);

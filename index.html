@@ -803,7 +803,7 @@ function saveRecord(collection,record,target){
  return save({recordChanges});
 }
 function resetForm(id){formEdits.delete(id);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm'){document.getElementById('substepsEditor').innerHTML='';scheduleEditor=undefined;}if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(id==='objectForm'){f.elements.managerChoice.value='';renderObjectManagerPicker();}if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
-function setForm(id,record){rememberEdit(id,record);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm'){document.getElementById(id).reset();renderSubstepEditor(record.substeps||[]);}if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';if(id==='scheduleForm')scheduleEditor.fields=scheduleFormFields(f);if(id==='objectForm'){f.elements.managerChoice.value='';document.getElementById('objectManagerSearch').value='';renderObjectManagerPicker();}f.scrollIntoView({behavior:'smooth',block:'start'})}
+function setForm(id,record){rememberEdit(id,record);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm'){document.getElementById(id).reset();renderSubstepEditor(record.substeps||[]);}if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';if(id==='scheduleForm'){scheduleEditor.fields=scheduleFormFields(f);scheduleEditor.changed=new Set();f.onchange=event=>{if(event.target.name)scheduleEditor?.changed?.add(event.target.name)};}if(id==='objectForm'){f.elements.managerChoice.value='';document.getElementById('objectManagerSearch').value='';renderObjectManagerPicker();}f.scrollIntoView({behavior:'smooth',block:'start'})}
 function removeItem(collection,id){
  if(collection==='workers'){
   const linked=db.objects.filter(object=>object.managerId===id);
@@ -888,9 +888,9 @@ const scheduleRowSources=new WeakMap();
 let scheduleEditor;
 const scheduleEditableFields=['title','start','end','assignee','status','notes','objectId'];
 function scheduleFormFields(form){return Object.fromEntries(scheduleEditableFields.map(key=>[key,form.elements[key].value]));}
-function scheduleChangedFields(original,values,initial){
+function scheduleChangedFields(original,values,initial,changed=new Set()){
  const result={...original};
- for(const [key,value] of Object.entries(values))if(value!==initial[key])result[key]=value;
+ for(const [key,value] of Object.entries(values))if(value!==initial[key]||changed.has(key))result[key]=value;
  return result;
 }
 function substepFields(row){return Object.fromEntries(['title','start','end','assignee','status','notes'].map(key=>[key,row.querySelector('.sub-'+key).value]));}
@@ -898,7 +898,8 @@ function substepRow(x={},source){
  const row=document.createElement('div');row.className='substep-editor';
  if(Object.hasOwn(x,'id'))row.dataset.subid=x.id;
  row.innerHTML=`<div class="substep-title"><b>Стадия</b><button type="button" class="btn small danger substep-remove">Удалить</button></div><div class="fields"><label>Название *<input class="sub-title" required value="${esc(x.title||'')}" placeholder="Название стадии"></label><label>Начало *<input type="date" class="sub-start" required value="${esc(x.start||'')}"></label><label>Окончание *<input type="date" class="sub-end" required value="${esc(x.end||'')}"></label><label>Ответственный<input class="sub-assignee" list="staffSuggestions" autocomplete="off" value="${esc(x.assignee||'')}"></label><label>Статус<select class="sub-status">${['Запланировано','В работе','Выполнено','Задержка'].map(st=>`<option ${st===(x.status||'Запланировано')?'selected':''}>${st}</option>`).join('')}</select></label><label>Примечание<input class="sub-notes" value="${esc(x.notes||'')}"></label></div>`;
- scheduleRowSources.set(row,{editor:scheduleEditor,source,original:JSON.parse(JSON.stringify(x)),fields:substepFields(row)});
+ scheduleRowSources.set(row,{editor:scheduleEditor,source,original:JSON.parse(JSON.stringify(x)),fields:substepFields(row),changed:new Set()});
+ row.addEventListener('change',event=>{for(const key of ['title','start','end','assignee','status','notes'])if(event.target===row.querySelector('.sub-'+key))scheduleRowSources.get(row).changed.add(key)});
  row.querySelector('.substep-remove').onclick=()=>row.remove();return row;
 }
 function renderSubstepEditor(arr){
@@ -911,7 +912,7 @@ function collectSubsteps(){
  if(scheduleEditor?.target!==target)throw Error('Не удалось сопоставить стадии с редактируемым этапом. Откройте этап заново.');
  const ids=new Set(),sources=new Set();
  for(const stage of scheduleEditor?.originals||[])if(Object.hasOwn(stage,'id')){
-  if(typeof stage.id!=='string'||! /^[a-zA-Z0-9_-]+$/.test(stage.id)||ids.has(stage.id))throw Error('Неоднозначные или повреждённые ID стадий. Сохранение отменено: исходные данные не изменены.');
+  if(typeof stage.id!=='string'||ids.has(stage.id))throw Error('Неоднозначные или повреждённые ID стадий. Сохранение отменено: исходные данные не изменены.');
   ids.add(stage.id);
  }
  return Array.from(document.querySelectorAll('#substepsEditor .substep-editor')).map(el=>{
@@ -921,7 +922,7 @@ function collectSubsteps(){
   const original=binding.source===undefined?binding.original:scheduleEditor.originals[binding.source];
   if(!original||el.dataset.subid!==(Object.hasOwn(original,'id')?original.id:undefined))throw Error('ID стадии изменён. Откройте этап заново.');
   const fields=substepFields(el);
-  if(binding.source!==undefined)return scheduleChangedFields(original,fields,binding.fields);
+  if(binding.source!==undefined)return scheduleChangedFields(original,fields,binding.fields,binding.changed);
   if(!original.id||ids.has(original.id))throw Error('ID новой стадии отсутствует или занят. Сохранение отменено.');
   ids.add(original.id);
   return {id:original.id,...fields,title:fields.title.trim(),assignee:fields.assignee.trim(),notes:fields.notes.trim()};
@@ -1127,7 +1128,7 @@ document.getElementById('scheduleForm').addEventListener('submit',event=>{
   const substeps=collectSubsteps();
   if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start))throw Error('Проверьте название и сроки каждой стадии.');
   const {target,old}=prepareFormRecord('scheduleForm','schedule',record);
-  const saved=old?scheduleChangedFields(old,Object.fromEntries(scheduleEditableFields.filter(key=>Object.hasOwn(record,key)).map(key=>[key,record[key]])),scheduleEditor.fields):record;
+  const saved=old?scheduleChangedFields(old,Object.fromEntries(scheduleEditableFields.filter(key=>Object.hasOwn(record,key)).map(key=>[key,record[key]])),scheduleEditor.fields,scheduleEditor.changed):record;
   if(!old&&activeObjectId)saved.objectId=activeObjectId;
   // An absent legacy substeps field stays absent unless stages were actually added.
   if(!old||Object.hasOwn(old,'substeps')||substeps.length)saved.substeps=substeps;
@@ -1751,7 +1752,7 @@ document.getElementById('exportBtn').after(previousBackupButton);
 document.getElementById('importFile').addEventListener('change',async e=>{
  const file=e.target.files[0];if(!file)return;
  try{
-  const candidate=ProrabkaStorage.validate(JSON.parse(await file.text()));
+  const candidate=ProrabkaStorage.validate(ProrabkaStorage.parseJsonSafely(await file.text()));
   if(!confirm('Импорт заменит все текущие данные. Предыдущая копия останется в хранилище. Продолжить?'))return;
   delete candidate.exportedAt;db=candidate;
   if(save({importing:true}))document.getElementById('backupStatus').textContent='Данные импортированы. Предыдущая копия: '+KEY+'_before_import.';

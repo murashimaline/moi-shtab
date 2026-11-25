@@ -31,7 +31,7 @@ test('legacy token mapping preserves distinct unnamed identities through reorder
  const before=JSON.stringify(originals),c=collector(originals,[{source:2},{source:1,values:{notes:'changed'}}]);
  assert.deepEqual(c.collect(),[originals[2],{...originals[1],notes:'changed'}]);assert.equal(JSON.stringify(originals),before);
 });
-for(const ids of [['same','same'],['bad/id'],['']])test('ambiguous/damaged stage IDs refuse saving: '+JSON.stringify(ids),()=>{
+for(const ids of [['same','same']])test('ambiguous/damaged stage IDs refuse saving: '+JSON.stringify(ids),()=>{
  const originals=ids.map(id=>stage({id}));assert.throws(()=>collector(originals,originals.map((_,source)=>({source}))).collect(),/ID стадий/);
 });
 test('new stages have their own IDs and inherit no extension from deleted neighbors',()=>{
@@ -55,3 +55,12 @@ test('schedule extension support keeps structural validation and unrelated colle
  assert.throws(()=>storage.validate({...blank(),workers:[{id:'w',name:'W',extension:{notAllowed:true}}]}),/Некорректные/);
  assert.throws(()=>storage.validate({...blank(),works:[{id:'w',date:'2026-11-01',substeps:[stage({extension:{notAllowed:true}})]}]}),/Некорректные/);
 });
+
+for(const id of ['legacy.1','legacy:α/1',''])test('historical stage identity preserved '+id,()=>{const row=stage({id});assert.deepEqual(collector([row],[{source:0,values:{notes:'changed'}}]).collect(),[{...row,notes:'changed'}]);});
+test('explicit selection overrides equal displayed initial value',()=>{const ctx=vm.createContext({});vm.runInContext(html.slice(html.indexOf('function scheduleChangedFields'),html.indexOf('function substepFields')),ctx);assert.equal(ctx.scheduleChangedFields({status:'unknown'},{status:'Запланировано'},{status:'Запланировано'},new Set(['status'])).status,'Запланировано');});
+for(const token of ['9007199254740993','0.1234567890123456789','1e-400','1e400'])test('unsafe raw '+token+' blocks all writes including restore before backup',()=>{
+ const data=blank();data.schedule=[schedule({extension:{nested:'TOKEN'},substeps:[stage({extension:{nested:'TOKEN'}})]})];const raw=JSON.stringify(data).replaceAll('"TOKEN"',token),disk=new Map([['db',raw],['db_before_import','keep']]);let writes=0;
+ const adapter={getItem:k=>disk.get(k)??null,setItem:(k,v)=>{writes++;disk.set(k,v)}};
+ for(let reload=0;reload<2;reload++){const p=storage.create(adapter,'db',blank),before=p.readSnapshot();assert.equal(p.status().blocked,true);for(const importing of [false,true]){assert.equal(p.commit(blank(),{importing}).ok,false);assert.deepEqual(p.readSnapshot(),before);}assert.throws(()=>storage.parseJsonSafely(raw),/точного значения/);assert.equal(p.readRaw(),raw);assert.equal(disk.get('db_before_import'),'keep');}assert.equal(writes,0);
+});
+test('equivalent decimals and quoted numeric text remain writable',()=>{for(const token of ['0','0.1','1.0','1e2','9007199254740991','10e-1','-0','1e-300']){const data=blank();data.schedule=[schedule({extension:{n:'TOKEN',text:'1e400 9007199254740993 \" 1e-400'}})];const raw=JSON.stringify(data).replace('"TOKEN"',token);const p=storage.create({getItem:()=>raw,setItem:()=>{}},'db',blank);assert.equal(p.status().blocked,false,token);assert.equal(p.commit(p.initial()).ok,true,token);assert.ok(storage.parseJsonSafely(raw));}});

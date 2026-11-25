@@ -45,7 +45,7 @@ let server,browser,passed=0;
   const expected=[{...data.schedule[0],substeps:[{...data.schedule[0].substeps[2],notes:'Изменена третья'},data.schedule[0].substeps[0],{id:newId,title:'Новая стадия',start:'2026-11-10',end:'2026-12-02',assignee:'',status:'Запланировано',notes:''}]}];
   await verify(page,expected,before);await edit(page);await submit(page);await verify(page,expected,before);
  });
- for(const ids of [['duplicate','duplicate'],['bad/id','unique'],['','unique']]){
+ for(const ids of [['duplicate','duplicate']]){
   const data=fixture();data.schedule[0].substeps=data.schedule[0].substeps.slice(0,2).map((row,i)=>({...row,id:ids[i]}));
   await scenario('SH01 05 ambiguous/damaged stage IDs refuse '+JSON.stringify(ids),async(page,dialogs)=>{
    const before=await snapshot(page);await edit(page);await patch(page,'#scheduleForm [name=notes]','Не сохранять');await submit(page);assert.match(dialogs.at(-1),/ID стадий/);assert.deepEqual(await snapshot(page),before);
@@ -84,5 +84,15 @@ let server,browser,passed=0;
  await scenario('SH01 14 unknown statuses and untouched whitespace survive unrelated note edit',async(page,dialogs,data)=>{
   const before=await snapshot(page);await edit(page);await patch(page,'#scheduleForm [name=notes]','Другое примечание');await submit(page);assert.deepEqual(dialogs,[]);await verify(page,[{...data.schedule[0],notes:'Другое примечание'}],before);
  },unknown);
+
+ for(const id of ['legacy.1','legacy:α/1','']){const data=fixture();data.schedule[0].substeps[0].id=id;await scenario('D02 historical ID '+id,async(page,dialogs,data)=>{const before=await snapshot(page);await edit(page);await patch(page,'.sub-notes >> nth=0','Updated');await submit(page);const expected=copy(data.schedule);expected[0].substeps[0].notes='Updated';await page.reload();await verify(page,expected,before);assert.deepEqual(dialogs,[])},data);}
+ for(const parent of [false,true])for(const choices of [[],['В работе'],['В работе','Запланировано']])await scenario('D03 explicit status '+parent+JSON.stringify(choices),async(page,dialogs,data)=>{const before=await snapshot(page);await edit(page);const select=page.locator(parent?'#scheduleForm [name=status]':'.sub-status >> nth=0');for(const value of choices)await select.selectOption({label:value});await submit(page);const expected=copy(data.schedule);if(choices.length)(parent?expected[0]:expected[0].substeps[0]).status=choices.at(-1);await page.reload();await verify(page,expected,before);assert.deepEqual(dialogs,[])},unknown);
+ for(const token of ['9007199254740993','0.1234567890123456789','1e-400','1e400'])await scenario('D01 unsafe raw blocks graph, object and restore '+token,async(page,dialogs,data)=>{
+  const raw=JSON.stringify(data).replaceAll('"TOKEN"',token);const safeBefore=await snapshot(page);await page.locator('#importFile').setInputFiles({name:'unsafe-restore.json',mimeType:'application/json',buffer:Buffer.from(raw)});await page.waitForTimeout(150);assert.deepEqual(await snapshot(page),safeBefore);await page.evaluate(({key,raw})=>localStorage.setItem(key,raw),{key,raw});await page.reload();const before=await snapshot(page);assert.equal(await page.evaluate(()=>persistence.status().blocked),true);
+  await page.evaluate(()=>{db.objects.push({id:'test',name:'draft'});save();});assert.equal((await snapshot(page)).raw,raw);assert.deepEqual((await snapshot(page)).confirmed,before.confirmed);
+  await page.evaluate(()=>{db.schedule.push({id:'test',title:'draft',start:'2026-11-01',end:'2026-12-01'});save();});assert.equal((await snapshot(page)).raw,raw);
+  await page.locator('#importFile').setInputFiles({name:'unsafe.json',mimeType:'application/json',buffer:Buffer.from(raw)});await page.waitForTimeout(150);assert.equal((await snapshot(page)).raw,raw);assert.equal((await snapshot(page)).backup,before.backup);assert.deepEqual((await snapshot(page)).confirmed,before.confirmed);
+  const downloadPromise=page.waitForEvent('download');await page.evaluate(()=>document.getElementById('downloadRawRecovery').click());const file=await downloadPromise;const location=path.join(output,'unsafe-'+token.replace(/[^a-z0-9]/gi,'_')+'.json');await file.saveAs(location);assert.equal(fs.readFileSync(location,'utf8'),raw);
+ },(()=>{const data=fixture();data.schedule[0].extension={n:'TOKEN'};data.schedule[0].substeps[0].extension={n:'TOKEN'};return data})());
  console.log(`Schedule preservation browser scenarios: ${passed} passed`);
 })().catch(error=>{console.error(error);process.exitCode=1}).finally(async()=>{await browser?.close();await new Promise(resolve=>server?server.close(resolve):resolve())});
