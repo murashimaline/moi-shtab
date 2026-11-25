@@ -64,3 +64,10 @@ for(const token of ['9007199254740993','0.1234567890123456789','1e-400','1e400']
  for(let reload=0;reload<2;reload++){const p=storage.create(adapter,'db',blank),before=p.readSnapshot();assert.equal(p.status().blocked,true);for(const importing of [false,true]){assert.equal(p.commit(blank(),{importing}).ok,false);assert.deepEqual(p.readSnapshot(),before);}assert.throws(()=>storage.parseJsonSafely(raw),/точного значения/);assert.equal(p.readRaw(),raw);assert.equal(disk.get('db_before_import'),'keep');}assert.equal(writes,0);
 });
 test('equivalent decimals and quoted numeric text remain writable',()=>{for(const token of ['0','0.1','1.0','1e2','9007199254740991','10e-1','-0','1e-300']){const data=blank();data.schedule=[schedule({extension:{n:'TOKEN',text:'1e400 9007199254740993 \" 1e-400'}})];const raw=JSON.stringify(data).replace('"TOKEN"',token);const p=storage.create({getItem:()=>raw,setItem:()=>{}},'db',blank);assert.equal(p.status().blocked,false,token);assert.equal(p.commit(p.initial()).ok,true,token);assert.ok(storage.parseJsonSafely(raw));}});
+
+for(const raw of ['{"version":3,"notes":"1e-400','{"notes":"\\\"1e400','{"n":1e400,','{"n":invalid}'])test('D03 syntax damage is recoverable without a numerical lock '+raw,()=>{
+ const disk=new Map([['db',raw],['db_before_import','previous']]),writes=[];const adapter={getItem:k=>disk.get(k)??null,setItem:(k,v)=>{writes.push(k);disk.set(k,v)}};const p=storage.create(adapter,'db',blank);
+ assert.equal(p.status().blocked,true);assert.equal(p.status().numberBlocked,false);assert.equal(p.commit(blank()).ok,false);assert.deepEqual(writes,[]);
+ assert.throws(()=>storage.parseJsonSafely(raw),SyntaxError);assert.equal(p.commit(blank(),{importing:true}).ok,true);assert.equal(disk.get('db_before_import'),raw);assert.equal(JSON.parse(disk.get('db')).version,3);
+});
+test('D03 escaped numeric strings do not become numeric tokens',()=>{const raw=JSON.stringify({text:'1e-400 " 1e400 '+String.fromCharCode(92,34).repeat(10000),n:0.1});assert.equal(storage.parseJsonSafely(raw).n,0.1);});

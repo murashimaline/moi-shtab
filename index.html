@@ -760,7 +760,7 @@ function save(options){
  return true;
 }
 window.addEventListener('storage',event=>{if(persistence.observe(event))storageNotice('Другая вкладка изменила базу. Запись заблокирована. Сохраните введённое отдельно перед перезагрузкой.');});
-if(persistence.status().blocked)storageNotice('База не загружена: '+persistence.status().error+'. Запись заблокирована. Скачайте исходные данные и восстановите проверенную JSON-копию через импорт. Пустой экран не означает пустую базу.');
+if(persistence.status().blocked)storageNotice(persistence.status().numberBlocked?persistence.status().error:'База не загружена: '+persistence.status().error+'. Запись заблокирована. Скачайте исходные данные и восстановите проверенную JSON-копию через импорт. Пустой экран не означает пустую базу.');
 function esc(s){return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function money(n){return (Number(n)||0).toLocaleString('ru-RU',{minimumFractionDigits:2,maximumFractionDigits:2})+' ₽'}
 function objName(id){return db.objects.find(x=>x.id===id)?.name||'—'}
@@ -1753,10 +1753,11 @@ document.getElementById('importFile').addEventListener('change',async e=>{
  const file=e.target.files[0];if(!file)return;
  try{
   const candidate=ProrabkaStorage.validate(ProrabkaStorage.parseJsonSafely(await file.text()));
+  if(persistence.status().numberBlocked)throw Error(persistence.status().error);
   if(!confirm('Импорт заменит все текущие данные. Предыдущая копия останется в хранилище. Продолжить?'))return;
   delete candidate.exportedAt;db=candidate;
   if(save({importing:true}))document.getElementById('backupStatus').textContent='Данные импортированы. Предыдущая копия: '+KEY+'_before_import.';
- }catch(error){alert('Не удалось импортировать файл. '+error.message)}finally{e.target.value=''}
+ }catch(error){alert(error.code==='JSON_NUMBER_PRECISION'?'Импортируемый JSON отклонён: точность чисел не гарантируется. Действующая база не изменена. '+error.message:'Не удалось импортировать файл. '+error.message)}finally{e.target.value=''}
 });
 document.querySelectorAll('form').forEach(f=>{if(f.elements.date&&!f.elements.date.value)f.elements.date.value=today()});
 ['reportDate','payTo','expenseTo','financeTo','cashTo'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today()});['payFrom','expenseFrom','financeFrom','cashFrom'].forEach(id=>{const el=document.getElementById(id);if(el)el.value=today().slice(0,7)+'-01'});['scheduleForm'].forEach(id=>{const f=document.getElementById(id);if(f){f.elements.start.value=today();f.elements.end.value=today()}});

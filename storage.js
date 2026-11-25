@@ -221,28 +221,39 @@ function validate(data,{links=true}={}){
 }
 // Compare decimal values, not spelling or binary floating-point approximations.
 function assertJsonNumberSafety(source){
+ // Syntax is checked independently; its rounded result is deliberately discarded.
+ // Malformed quoted text must never become a numerical write lock.
+ JSON.parse(source);
+ const fail=message=>{const error=Error(message);error.code='JSON_NUMBER_PRECISION';throw error;};
  const canonical=token=>{
+  if(token.length>100000)fail('Предел проверки точности исходных чисел JSON.');
   const match=/^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
-  if(!match||token.length>100000)throw Error('Предел проверки точности исходных чисел JSON. Запись заблокирована.');
   let digits=(match[2]+(match[3]||'')).replace(/^0+/,'');
   if(!digits)return '0';
   const exponent=Number(match[4]||0);
-  if(!Number.isSafeInteger(exponent)||Math.abs(exponent)>1000000)throw Error('Предел проверки точности исходных чисел JSON. Запись заблокирована.');
-  const trailing=/0+$/.exec(digits)?.[0].length||0;
+  if(!Number.isSafeInteger(exponent)||Math.abs(exponent)>1000000)fail('Предел проверки точности исходных чисел JSON.');
+  let trailing=0;while(trailing<digits.length&&digits[digits.length-1-trailing]==='0')trailing++;
   digits=digits.slice(0,digits.length-trailing);
   return match[1]+digits+'e'+(exponent-(match[3]||'').length+trailing);
  };
- source.replace(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/g,token=>{
-  if(token[0]==='"')return token;
-  const value=Number(token);
-  if(!Number.isFinite(value)||canonical(token)!==canonical(JSON.stringify(value)))throw Error('Исходное число JSON '+token.slice(0,80)+' нельзя сохранить без изменения точного значения. Все операции записи заблокированы. Скачайте исходный JSON.');
-  return token;
- });
+ // A forward-only scan of syntactically valid JSON. Escapes consume two code units.
+ for(let i=0;i<source.length;){
+  const char=source[i];
+  if(char==='"'){
+   i++;
+   while(i<source.length){if(source[i]==='\\'){i+=2;continue;}if(source[i++]==='"')break;}
+  }else if(char==='-'||char>='0'&&char<='9'){
+   const start=i++;
+   while(i<source.length&&'0123456789.eE+-'.includes(source[i]))i++;
+   const token=source.slice(start,i),value=Number(token);
+   if(!Number.isFinite(value)||canonical(token)!==canonical(JSON.stringify(value)))fail('Исходное число JSON '+token.slice(0,80)+' нельзя сохранить без изменения точного значения.');
+  }else i++;
+ }
 }
 function parseJsonSafely(source){assertJsonNumberSafety(source);return JSON.parse(source);}
 function create(storage,key,empty){
  let raw=null,confirmed=empty(),blocked=false,conflict=false,error='',numberError='';
- try{raw=storage.getItem(key);if(raw!==null){try{assertJsonNumberSafety(raw)}catch(e){numberError=e.message;throw e}confirmed=validate(JSON.parse(raw),{links:false})}}catch(e){blocked=true;error=e.message}
+ try{raw=storage.getItem(key);if(raw!==null){try{assertJsonNumberSafety(raw)}catch(e){if(e.code==='JSON_NUMBER_PRECISION')numberError='Обычные операции записи в текущую базу заблокированы: '+e.message+' Доступна непроверенная выгрузка точного исходного JSON. Специальное восстановление ещё не реализовано.';throw numberError?Error(numberError):e}confirmed=validate(JSON.parse(raw),{links:false})}}catch(e){blocked=true;error=e.message}
  return {
   initial:()=>clone(confirmed), readSnapshot:()=>clone(confirmed),
   capabilities:()=>capabilities,
@@ -260,12 +271,12 @@ function create(storage,key,empty){
    if(storage.getItem(key)!==source)throw Error('Источник изменился во время подготовки JSON. Повторите экспорт после перезагрузки.');
    return source;
   },
-  status:()=>({blocked,conflict,error,raw}),
+  status:()=>({blocked,conflict,error,raw,numberBlocked:Boolean(numberError)}),
   observe(event){if(event.key===key||event.key===null){if(event.newValue!==raw){conflict=true;return true}}return false},
   commit(candidate,{importing=false,recordChanges=[],attendanceBatch=false}={}){
    try{
     if(numberError)throw Error(numberError);
-    if(raw!==null)assertJsonNumberSafety(raw);
+    if(raw!==null&&!blocked)assertJsonNumberSafety(raw);
     if(blocked&&!importing)throw Error('База не загружена. Сначала восстановите резервную копию.');
     if(conflict||storage.getItem(key)!==raw){conflict=true;throw Error('Данные изменены в другой вкладке. Сохраните введённое отдельно и перезагрузите страницу.');}
     // Every successful save must be restorable with the same strict validator.
