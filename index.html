@@ -142,7 +142,7 @@ footer{color:#edf8ff}
 .sg-work small{display:block;font-size:11px;color:var(--muted);margin-top:5px}
 .sg-status{font-size:12px;font-weight:650;line-height:1.5;overflow-wrap:anywhere}
 .sg-status:before{content:"●";font-size:10px;margin-right:6px}
-.sg-working{color:#2366a7}.sg-done{color:#267149}.sg-late{color:#a92e32}.sg-planned{color:#866000}.sg-unknown{color:#5e6b7d}
+.sg-working{color:#2366a7}.sg-done{color:#267149}.sg-late{color:#a92e32}.sg-delayed{color:#a92e32}.sg-planned{color:#866000}.sg-unknown{color:#5e6b7d}
 .sg-progress{font-size:12px;font-weight:600}
 .sg-deviation{font-size:12px;color:var(--muted);line-height:1.5}
 .sg-alert,.sg-warning{color:#a92e32}.sg-warning{display:block;font-weight:650}
@@ -372,7 +372,7 @@ nav .nav-dropdown-panel button.active{background:#0b71ba;color:#fff}
 <div class="panel"><div class="gantt-heading"><div><h2>График работ · план и факт</h2><p class="muted-small">Плановые сроки и введённые статусы. Источник фактических дат и готовности не определён.</p></div><button class="btn" id="exportScheduleExcel" type="button">Скачать график Excel (.xlsx)</button></div>
 <div class="schedule-summary" id="scheduleSummary"></div>
 <p class="sg-count-rule">Единица подсчёта — стадия или этап без стадий. Родительский этап показан для контекста. Сводка по всем работам выбранного объекта.</p>
-<div class="sg-filter"><label>Поиск по работам<input id="scheduleSearch" type="search" placeholder="Название работы или этапа"/></label><label>Статус<select id="scheduleStatus"><option value="">Все статусы</option><option value="planned">Запланировано</option><option value="working">В работе</option><option value="done">Выполнено</option><option value="late">Просрочено / задержка</option><option value="unknown">Нет данных</option></select></label><label>Сортировка<select id="scheduleSort"><option value="start">По началу плана</option><option value="title">По названию</option></select></label></div>
+<div class="sg-filter"><label>Поиск по работам<input id="scheduleSearch" type="search" placeholder="Название работы или этапа"/></label><label>Статус<select id="scheduleStatus"><option value="">Все статусы</option><option value="planned">Запланировано</option><option value="working">В работе</option><option value="done">Выполнено</option><option value="delayed">Задержка</option><option value="late">Просрочено</option><option value="unknown">Нет данных</option></select></label><label>Сортировка<select id="scheduleSort"><option value="start">По началу плана</option><option value="title">По названию</option></select></label></div>
 <div class="gantt-controls"><button class="btn secondary small" id="schedulePrev" type="button">← Назад</button><label>Начало шкалы<input id="scheduleViewStart" type="date"/></label><label>Период<select id="scheduleViewDays"><option selected="" value="14">14 дней</option><option value="30">30 дней</option><option value="60">60 дней</option><option value="90">90 дней</option></select></label><button class="btn secondary small" id="scheduleNext" type="button">Вперёд →</button><button class="btn secondary small" id="scheduleCurrent" type="button">К сегодня</button><span class="gantt-range" id="scheduleViewRange"></span></div>
 <div class="sg-caption"><span id="scheduleAssessment"></span><span id="scheduleShown" aria-live="polite"></span><span>ПЛАН · светлая полоса / ФАКТ · нет данных</span></div>
 <div id="scheduleTimeline"></div>
@@ -1004,8 +1004,8 @@ function scheduleGetState(record,assessment=today()){
  const start=scheduleScreenDate(record.start),end=scheduleScreenDate(record.end);
  const valid=start!==null&&end!==null&&end>=start;
  const warning=valid?'':'Сверить плановые даты';
- const titles={planned:'Запланировано',working:'В работе',done:'Выполнено',late:'Просрочено',unknown:'Нет данных'};
- const original={'Запланировано':'planned','В работе':'working','Выполнено':'done','Задержка':'late'};
+ const titles={planned:'Запланировано',working:'В работе',done:'Выполнено',delayed:'Задержка',late:'Просрочено',unknown:'Нет данных'};
+ const original={'Запланировано':'planned','В работе':'working','Выполнено':'done','Задержка':'delayed'};
  let key=Object.hasOwn(original,record.status)?original[record.status]:'unknown',detail='',days=null;
  if(key==='done')detail='Окончание неизвестно';
  else if(key==='unknown')detail='Статус не указан или не распознан';
@@ -1031,7 +1031,7 @@ function scheduleScreenRows(records,objectId,assessment){
   });
   rows.push(make(record,parentKey));
   const ids=new Map();
-  stages.forEach(stage=>{if(typeof stage.id==='string'&&stage.id.trim())ids.set(stage.id,(ids.get(stage.id)||0)+1)});
+  stages.forEach(stage=>{if(typeof stage.id==='string')ids.set(stage.id,(ids.get(stage.id)||0)+1)});
   stages.forEach((stage,stageIndex)=>{
    const id=ids.get(stage.id)===1?['id',stage.id]:['legacy',stageIndex];
    rows.push(make(stage,JSON.stringify(['stage',identity,id]),record));
@@ -1069,7 +1069,7 @@ function scheduleSetDefaultView(){
  field.value=near.length ? (near[0].start<today()?scheduleDatePlus(today(),-7):scheduleDatePlus(near[0].start,-3)) : arr.length?scheduleDatePlus(arr[0].start||today(),-3):scheduleDatePlus(today(),-7);
 }
 let scheduleScreenModel=new Map(),scheduleHorizontalPosition=0;
-let scheduleDialogOpener=null,scheduleDialogKey='',scheduleDialogSource=null;
+let scheduleDialogKey='',scheduleDialogSource=null,scheduleDialogEditing=false;
 
 function renderSchedule(){
  const assessment=today();
@@ -1085,9 +1085,9 @@ function renderScheduleTimeline(assessment=today()){
  const wrap=document.getElementById('scheduleTimeline');
  const records=scheduleScreenRows(db.schedule||[],activeObjectId,assessment);
  const leaves=records.filter(row=>!row.context);
- const totals={planned:0,working:0,done:0,late:0,unknown:0};
+ const totals={planned:0,working:0,done:0,delayed:0,late:0,unknown:0};
  leaves.forEach(row=>totals[row.state.key]++);
- const names={planned:'Запланировано',working:'В работе',done:'Выполнено',late:'Просрочено',unknown:'Нет данных'};
+ const names={planned:'Запланировано',working:'В работе',done:'Выполнено',delayed:'Задержка',late:'Просрочено',unknown:'Нет данных'};
  document.getElementById('scheduleSummary').innerHTML='<span><b>'+leaves.length+'</b> работ</span>'+Object.entries(totals).map(([key,value])=>'<span class="sg-'+key+'"><b>'+value+'</b> '+names[key]+'</span>').join('')+'<span>Из выполненных с опозданием · <b>Нет данных</b></span>';
  document.getElementById('scheduleAssessment').textContent='Дата оценки · '+assessment.split('-').reverse().join('.');
  const filtered=scheduleScreenFilter(records,document.getElementById('scheduleSearch').value,document.getElementById('scheduleStatus').value,document.getElementById('scheduleSort').value);
@@ -1114,7 +1114,7 @@ function renderScheduleTimeline(assessment=today()){
  const html=filtered.rows.map(row=>{
   const source=row.source,state=row.state;
   const meta=row.context?'Этап · контекст':row.parent?'Стадия · '+row.parentTitle:'Этап';
-  return '<article class="sg-row'+(row.context?' sg-parent':'')+'"><div class="sg-work"><button type="button" class="sg-work-button" data-schedule-key="'+esc(row.key)+'">'+esc(source.title||'Без названия')+'</button><small>'+esc(meta)+' · '+esc(source.assignee||'Ответственный не указан')+'</small></div><div class="sg-state"><span class="sg-status sg-'+state.key+'">'+esc(state.title)+'</span></div><div class="sg-progress">Нет данных</div><div class="sg-deviation'+(state.key==='late'?' sg-alert':'')+'">'+esc(state.detail)+(state.warning?'<span class="sg-warning">'+esc(state.warning)+'</span>':'')+'</div>'+lanes(row)+'</article>';
+  return '<article class="sg-row'+(row.context?' sg-parent':'')+'"><div class="sg-work"><button type="button" class="sg-work-button" data-schedule-key="'+esc(row.key)+'">'+esc(source.title||'Без названия')+'</button><small>'+esc(meta)+' · '+esc(source.assignee||'Ответственный не указан')+'</small></div><div class="sg-state"><span class="sg-status sg-'+state.key+'">'+esc(state.title)+'</span></div><div class="sg-progress">Нет данных</div><div class="sg-deviation'+(['late','delayed'].includes(state.key)?' sg-alert':'')+'">'+esc(state.detail)+(state.warning?'<span class="sg-warning">'+esc(state.warning)+'</span>':'')+'</div>'+lanes(row)+'</article>';
  }).join('');
  const empty=leaves.length?'По выбранным условиям работ нет.':'В графике пока нет работ. Добавьте этап в форме планирования ниже.';
  wrap.style.setProperty('--sg-days',count);
@@ -1145,7 +1145,7 @@ function renderScheduleWorkDetails(row){
 function openScheduleWorkDetails(key,opener){
  const row=scheduleScreenModel.get(key);
  if(!row)return;
- scheduleDialogKey=key;scheduleDialogSource=row.source;scheduleDialogOpener=opener;
+ scheduleDialogKey=key;scheduleDialogSource=row.source;scheduleDialogEditing=false;
  renderScheduleWorkDetails(row);
  document.getElementById('scheduleWorkDialog').showModal();
 }
@@ -1161,10 +1161,13 @@ document.getElementById('scheduleTimeline').addEventListener('scroll',event=>{
 },true);
 document.getElementById('scheduleWorkClose').addEventListener('click',()=>document.getElementById('scheduleWorkDialog').close());
 document.getElementById('scheduleWorkDialog').addEventListener('close',()=>{
- if(scheduleDialogOpener?.isConnected)scheduleDialogOpener.focus({preventScroll:true});
+ const button=Array.from(document.querySelectorAll('#scheduleTimeline [data-schedule-key]')).find(element=>element.dataset.scheduleKey===scheduleDialogKey);
+ const target=scheduleDialogEditing?document.querySelector('#scheduleForm [name=title]'):button||document.getElementById('scheduleSearch');
+ if(target?.getClientRects().length)target.focus({preventScroll:true});
 });
 document.getElementById('scheduleWorkEdit').addEventListener('click',()=>{
  const row=scheduleScreenModel.get(scheduleDialogKey);
+ scheduleDialogEditing=Boolean(row);
  document.getElementById('scheduleWorkDialog').close();
  if(row)setForm('scheduleForm',row.parent||row.source);
 });

@@ -15,6 +15,8 @@ test('VG02 work due today stays working and becomes overdue on the next calendar
  assert.equal(state('В работе','2026-12-30','2026-12-31','2027-01-01').days,1);
 });
 test('VG02 explicit delays retain their reason before and after the planned end',()=>{
+ assert.equal(state('Задержка').key,'delayed');
+ assert.equal(state('Задержка').title,'Задержка');
  assert.equal(state('Задержка').detail,'Отмечена задержка');
  assert.equal(state('Задержка',undefined,undefined,'2026-12-01').detail,'Отмечена задержка · Просрочено +1 дн.');
 });
@@ -80,4 +82,20 @@ test('VG02 view ignores unsupported factual extensions and preserves every origi
  assert.equal(row.state.title,'В работе');
  assert.equal(row.state.days,null);
  assert.equal(JSON.stringify(input),before);
+});
+
+test('VG02 CPU six categories remain distinct on end-date boundaries and invalid intervals',()=>{
+ for(const date of ['2026-11-25','2026-12-05']){const r=state('Задержка','2026-11-01','2026-12-05',date);assert.equal(r.key,'delayed');assert.equal(r.days,null);assert.equal(r.detail,'Отмечена задержка');}
+ assert.equal(state('Задержка','2026-11-01','2026-12-05','2026-12-06').key,'late');
+ assert.equal(state('Задержка','2026-12-01','2026-11-01').key,'delayed');
+ assert.equal(state('Задержка','2026-12-01','2026-11-01').days,null);
+ const statuses=['Запланировано','В работе','Выполнено','Задержка','В работе','Unknown'],rows=context.scheduleScreenRows(statuses.map((status,i)=>({id:String(i),status,start:'2026-11-01',end:i===4?'2026-11-29':'2026-12-05'})),'','2026-11-30');
+ assert.deepEqual(Array.from(rows,r=>r.state.key),['planned','working','done','delayed','late','unknown']);
+ for(const key of ['planned','working','done','delayed','late','unknown'])assert.equal(context.scheduleScreenFilter(rows,'',key,'start').count,1);
+});
+
+test('VG02 unique historical empty and Unicode stage IDs remain stable when records reorder',()=>{
+ const a={id:'',title:'Empty'},b={id:'legacy:α/1',title:'Unicode'},parent={id:'p',substeps:[a,b]};
+ const first=context.scheduleScreenRows([parent],'','2026-11-30').slice(1);parent.substeps=[b,a];const second=context.scheduleScreenRows([parent],'','2026-11-30').slice(1);
+ assert.equal(first[0].key,second[1].key);assert.equal(first[1].key,second[0].key);
 });
