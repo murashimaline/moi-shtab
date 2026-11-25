@@ -802,8 +802,8 @@ function saveRecord(collection,record,target){
  db={...db,[collection]:db[collection].map(row=>row.id===target.id?record:row)};
  return save({recordChanges});
 }
-function resetForm(id){formEdits.delete(id);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm')document.getElementById('substepsEditor').innerHTML='';if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(id==='objectForm'){f.elements.managerChoice.value='';renderObjectManagerPicker();}if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
-function setForm(id,record){rememberEdit(id,record);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm')renderSubstepEditor(record.substeps||[]);if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';if(id==='objectForm'){f.elements.managerChoice.value='';document.getElementById('objectManagerSearch').value='';renderObjectManagerPicker();}f.scrollIntoView({behavior:'smooth',block:'start'})}
+function resetForm(id){formEdits.delete(id);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=false);if(id==='scheduleForm'){document.getElementById('substepsEditor').innerHTML='';scheduleEditor=undefined;}if(id==='expenseForm')renderExistingReceipts([]);const f=document.getElementById(id);f.reset();if(id==='objectForm'){f.elements.managerChoice.value='';renderObjectManagerPicker();}if(f.elements.id)f.elements.id.value='';if(f.elements.date)f.elements.date.value=today();if(f.elements.shifts)f.elements.shifts.value='1';if(f.elements.hours)f.elements.hours.value='8';if(f.elements.fine)f.elements.fine.value='0';if(f.elements.deduction)f.elements.deduction.value='0'}
+function setForm(id,record){rememberEdit(id,record);if(id==='workForm')Array.from(document.getElementById('workWorkerPicker').options).forEach(o=>o.selected=(record.workerIds||[]).includes(o.value));if(id==='scheduleForm'){document.getElementById(id).reset();renderSubstepEditor(record.substeps||[]);}if(id==='expenseForm'){renderExistingReceipts(record.receipts||[]);document.getElementById('expensePaymentSource').value=record.paymentSource||''}if(id==='paymentForm')document.getElementById('wagePaymentSource').value=record.paymentSource||'other';const f=document.getElementById(id);for(const [k,v] of Object.entries(record))if(f.elements[k]&&f.elements[k].type!=='file')f.elements[k].value=v??'';if(id==='scheduleForm')scheduleEditor.fields=scheduleFormFields(f);if(id==='objectForm'){f.elements.managerChoice.value='';document.getElementById('objectManagerSearch').value='';renderObjectManagerPicker();}f.scrollIntoView({behavior:'smooth',block:'start'})}
 function removeItem(collection,id){
  if(collection==='workers'){
   const linked=db.objects.filter(object=>object.managerId===id);
@@ -883,19 +883,49 @@ function renderWeeklyPayroll(){
 }
 function renderGoals(){document.getElementById('goalList').innerHTML=table(['Цель','Срок','Статус','Действия'],db.goals.map(x=>`<tr><td>${esc(x.title)}</td><td>${esc(x.due||'—')}</td><td>${esc(x.status)}</td><td>${actionBtns('goals',x,'goalForm')}</td></tr>`))}
 
-function substepRow(x={}){
+// Editor identities stay in memory. Legacy stages are never assigned IDs on opening.
+const scheduleRowSources=new WeakMap();
+let scheduleEditor;
+const scheduleEditableFields=['title','start','end','assignee','status','notes','objectId'];
+function scheduleFormFields(form){return Object.fromEntries(scheduleEditableFields.map(key=>[key,form.elements[key].value]));}
+function scheduleChangedFields(original,values,initial){
+ const result={...original};
+ for(const [key,value] of Object.entries(values))if(value!==initial[key])result[key]=value;
+ return result;
+}
+function substepFields(row){return Object.fromEntries(['title','start','end','assignee','status','notes'].map(key=>[key,row.querySelector('.sub-'+key).value]));}
+function substepRow(x={},source){
  const row=document.createElement('div');row.className='substep-editor';
  if(Object.hasOwn(x,'id'))row.dataset.subid=x.id;
  row.innerHTML=`<div class="substep-title"><b>Стадия</b><button type="button" class="btn small danger substep-remove">Удалить</button></div><div class="fields"><label>Название *<input class="sub-title" required value="${esc(x.title||'')}" placeholder="Название стадии"></label><label>Начало *<input type="date" class="sub-start" required value="${esc(x.start||'')}"></label><label>Окончание *<input type="date" class="sub-end" required value="${esc(x.end||'')}"></label><label>Ответственный<input class="sub-assignee" list="staffSuggestions" autocomplete="off" value="${esc(x.assignee||'')}"></label><label>Статус<select class="sub-status">${['Запланировано','В работе','Выполнено','Задержка'].map(st=>`<option ${st===(x.status||'Запланировано')?'selected':''}>${st}</option>`).join('')}</select></label><label>Примечание<input class="sub-notes" value="${esc(x.notes||'')}"></label></div>`;
+ scheduleRowSources.set(row,{editor:scheduleEditor,source,original:JSON.parse(JSON.stringify(x)),fields:substepFields(row)});
  row.querySelector('.substep-remove').onclick=()=>row.remove();return row;
 }
-function renderSubstepEditor(arr){const el=document.getElementById('substepsEditor');el.innerHTML='';arr.forEach(x=>el.appendChild(substepRow(x)))}
+function renderSubstepEditor(arr){
+ scheduleEditor={target:formEdits.get('scheduleForm'),originals:JSON.parse(JSON.stringify(arr))};
+ const el=document.getElementById('substepsEditor');el.innerHTML='';arr.forEach((x,index)=>el.appendChild(substepRow(x,index)));
+}
 function collectSubsteps(){
- return Array.from(document.querySelectorAll('#substepsEditor .substep-editor')).map(el=>({
-  ...(el.dataset.subid===undefined?{}:{id:el.dataset.subid}),
-  title:el.querySelector('.sub-title').value.trim(),start:el.querySelector('.sub-start').value,end:el.querySelector('.sub-end').value,
-  assignee:el.querySelector('.sub-assignee').value.trim(),status:el.querySelector('.sub-status').value,notes:el.querySelector('.sub-notes').value.trim()
- }));
+ const target=formEdits.get('scheduleForm');
+ if(!scheduleEditor&&!target)scheduleEditor={target,originals:[]};
+ if(scheduleEditor?.target!==target)throw Error('Не удалось сопоставить стадии с редактируемым этапом. Откройте этап заново.');
+ const ids=new Set(),sources=new Set();
+ for(const stage of scheduleEditor?.originals||[])if(Object.hasOwn(stage,'id')){
+  if(typeof stage.id!=='string'||! /^[a-zA-Z0-9_-]+$/.test(stage.id)||ids.has(stage.id))throw Error('Неоднозначные или повреждённые ID стадий. Сохранение отменено: исходные данные не изменены.');
+  ids.add(stage.id);
+ }
+ return Array.from(document.querySelectorAll('#substepsEditor .substep-editor')).map(el=>{
+  const binding=scheduleRowSources.get(el);
+  if(!binding||binding.editor!==scheduleEditor||sources.has(binding))throw Error('Не удалось безопасно сопоставить строку стадии. Откройте этап заново.');
+  sources.add(binding);
+  const original=binding.source===undefined?binding.original:scheduleEditor.originals[binding.source];
+  if(!original||el.dataset.subid!==(Object.hasOwn(original,'id')?original.id:undefined))throw Error('ID стадии изменён. Откройте этап заново.');
+  const fields=substepFields(el);
+  if(binding.source!==undefined)return scheduleChangedFields(original,fields,binding.fields);
+  if(!original.id||ids.has(original.id))throw Error('ID новой стадии отсутствует или занят. Сохранение отменено.');
+  ids.add(original.id);
+  return {id:original.id,...fields,title:fields.title.trim(),assignee:fields.assignee.trim(),notes:fields.notes.trim()};
+ });
 }
 /* Планирование версии 0.7. Отдельный модуль без изменения локальных данных. */
 function scheduleDaysDelta(a,b){return Math.round((Date.parse(a+'T12:00:00Z')-Date.parse(b+'T12:00:00Z'))/86400000)}
@@ -1092,14 +1122,16 @@ document.getElementById('addSubstep').addEventListener('click',()=>{
 document.getElementById('scheduleForm').addEventListener('submit',event=>{
  event.preventDefault();
  const record=formData(event.currentTarget);
- if(activeObjectId)record.objectId=activeObjectId;
  try{
   if(record.end<record.start)throw Error('Дата окончания этапа раньше начала.');
   const substeps=collectSubsteps();
   if(substeps.some(st=>!st.title||!st.start||!st.end||st.end<st.start))throw Error('Проверьте название и сроки каждой стадии.');
-  const {target}=prepareFormRecord('scheduleForm','schedule',record);
-  record.substeps=substeps;
-  if(saveRecord('schedule',record,target))resetForm('scheduleForm');
+  const {target,old}=prepareFormRecord('scheduleForm','schedule',record);
+  const saved=old?scheduleChangedFields(old,Object.fromEntries(scheduleEditableFields.filter(key=>Object.hasOwn(record,key)).map(key=>[key,record[key]])),scheduleEditor.fields):record;
+  if(!old&&activeObjectId)saved.objectId=activeObjectId;
+  // An absent legacy substeps field stays absent unless stages were actually added.
+  if(!old||Object.hasOwn(old,'substeps')||substeps.length)saved.substeps=substeps;
+  if(saveRecord('schedule',saved,target))resetForm('scheduleForm');
  }catch(error){alert(error.message)}
 });
 submitCollection('workerForm','workers');

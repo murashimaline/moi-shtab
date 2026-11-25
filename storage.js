@@ -164,7 +164,8 @@ function validateRecord(k,r,path,fail,links){
   if(['name','title','notes','address','manager','trade','phone','objectId','workerId','itemId','status','kind','assignee','category','vendor','source','paymentSource','shiftType','importSourceKey','importFingerprint','serial','unit','condition','adjustmentReason','objectName','sourceFile'].includes(key)&&v!=null&&typeof v!=='string')fail(path+'.'+key);
   if(['photos','workerIds','sourceKeys'].includes(key)){if(!Array.isArray(v)||v.some(s=>typeof s!=='string'))fail(path+'.'+key)}
   else if(['receipts','substeps','review'].includes(key)){if(!Array.isArray(v)||v.some(s=>!object(s)))fail(path+'.'+key)}
-  else if(v!==null&&!['string','number','boolean'].includes(typeof v))fail(path+'.'+key);
+  // Schedule extensions are opaque JSON, not sources for calculated actuals.
+  else if(k!=='schedule'&&v!==null&&!['string','number','boolean'].includes(typeof v))fail(path+'.'+key);
   if(['amount','rate','ratePerShift','shifts','hours','fine','deduction','qty','baseQty','workersCount'].includes(key)&&v!==null&&(typeof v!=='number'&&typeof v!=='string'||!Number.isFinite(Number(v))||Number(v)<0))fail(path+'.'+key);
   if(['date','due','start','end'].includes(key)&&v!==''&&v!=null&&(typeof v!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(v)||!Number.isFinite(Date.parse(v))||new Date(v).toISOString().slice(0,10)!==v))fail(path+'.'+key);
  }
@@ -179,7 +180,7 @@ function validateRecord(k,r,path,fail,links){
  }
  for(const field of (['objects','workers','warehouse'].includes(k)?['name']:['tasks','schedule'].includes(k)?['title']:[]))if(typeof r[field]!=='string'||!r[field].trim())fail(path+'.'+field);
  for(const receipt of r.receipts||[])if(typeof receipt.data!=='string'||typeof receipt.name!=='string'||receipt.verified!==undefined&&typeof receipt.verified!=='boolean')fail(path+'.receipts');
- for(const s of r.substeps||[])if(typeof s.title!=='string'||!s.title.trim()||!validDate(s.start)||!validDate(s.end)||s.end<s.start||Object.values(s).some(v=>typeof v!=='string'))fail(path+'.substeps');
+ for(const s of r.substeps||[])if(typeof s.title!=='string'||!s.title.trim()||!validDate(s.start)||!validDate(s.end)||s.end<s.start||Object.entries(s).some(([key,v])=>(k!=='schedule'||['id','title','start','end','assignee','status','notes','objectId'].includes(key))&&typeof v!=='string'))fail(path+'.substeps');
  for(const row of r.review||[])if(!validDate(row.date)||['sheet','cell','workerName','reason'].some(key=>typeof row[key]!=='string')||!['string','number'].includes(typeof row.rawValue))fail(path+'.review');
 }
 function validate(data,{links=true}={}){
