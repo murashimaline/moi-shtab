@@ -116,6 +116,17 @@ function pass(label){passed++;console.log('VG02 '+label+' PASS')}
    }
    await session.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
    await page.waitForFunction(()=>document.querySelector('.sg-row .sg-calendar').scrollLeft>20);
+   await page.evaluate(()=>new Promise(resolve=>{
+    const calendar=document.querySelector('.sg-row .sg-calendar');
+    let previous=calendar.scrollLeft,stableFrames=0;
+    function settled(){
+     const current=calendar.scrollLeft;
+     stableFrames=current===previous?stableFrames+1:0;
+     previous=current;
+     if(stableFrames>=8)resolve();else requestAnimationFrame(settled);
+    }
+    requestAnimationFrame(settled);
+   }));
    await session.detach();
    pass(width+'px emulated touch swipe scrolls the calendar');
   }
