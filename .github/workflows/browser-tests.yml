@@ -56,7 +56,6 @@ jobs:
       - run: node tests/schedule-json-stress.cjs
       - run: python tests/check-schedule-exports.py
       - run: python tests/check-finance-exports.py
-      - run: cp docs/evidence/vg02-d02-native-focus.json .browser-results/vg02-native-focus-windows-local.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:

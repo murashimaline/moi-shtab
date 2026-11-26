@@ -58,6 +58,37 @@ function pass(label){passed++;console.log('VG02 '+label+' PASS')}
   return {page,context};
  }
  const snapshot=page=>page.evaluate(()=>({raw:localStorage.getItem('moiShtab_v03'),backup:localStorage.getItem('moiShtab_v03_before_import'),memory:JSON.stringify(db),confirmed:persistence.readSnapshot(),state:persistence.status(),writes:window.screenWrites}));
+
+ if(process.env.BROWSER_FOCUS_ONLY!=='1'){
+ const filterProof=[];
+ for(const width of [320,390]){
+  const {page,context}=await open(width),before=await snapshot(page);
+  async function visibleSelection(label){
+   await page.evaluate(()=>document.fonts.ready);
+   const metrics=await page.evaluate(()=>['scheduleStatus','scheduleSort'].map(id=>{
+    const el=document.getElementById(id),style=getComputedStyle(el),box=el.getBoundingClientRect();
+    const text=el.selectedOptions[0].label,canvas=document.createElement('canvas'),paint=canvas.getContext('2d');
+    paint.font=style.fontWeight+' '+style.fontSize+' '+style.fontFamily;
+    const textWidth=paint.measureText(text).width;
+    // Reserve a conservative 32 CSS px for the native select arrow, in addition to both paddings.
+    const available=el.clientWidth-parseFloat(style.paddingLeft)-parseFloat(style.paddingRight)-32;
+    return {id,text,textWidth,available,width:box.width,height:box.height,left:box.left,right:box.right,font:paint.font,display:style.display,visibility:style.visibility};
+   }));
+   for(const metric of metrics){assert.equal(metric.visibility,'visible');assert.notEqual(metric.display,'none');assert.ok(metric.textWidth<=metric.available,JSON.stringify(metric));assert.ok(metric.height>=44);assert.ok(metric.left>=0&&metric.right<=width);}
+   assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+   filterProof.push({width,label,metrics});
+   await page.locator('.sg-filter').screenshot({path:path.join(out,`vg02-filter-${width}-${label}.png`)});
+  }
+  for(const status of ['','planned','working','done','delayed','late','unknown']){await page.locator('#scheduleStatus').selectOption(status);await visibleSelection(status||'all');}
+  await page.locator('#scheduleStatus').selectOption('planned');
+  for(const sort of ['start','title']){await page.locator('#scheduleSort').selectOption(sort);await visibleSelection('planned-'+sort);}
+  await page.locator('#scheduleSort').selectOption('start');await page.locator('#scheduleStatus').selectOption('');await page.locator('#scheduleStatus').focus();await page.keyboard.press('ArrowDown');assert.equal(await page.locator('#scheduleStatus').inputValue(),'planned');await page.keyboard.press('Tab');assert.equal(await page.locator('#scheduleSort').evaluate(el=>el===document.activeElement),true);await page.locator('#scheduleStatus').tap();await page.keyboard.press('Escape');await visibleSelection('keyboard-touch');
+  await page.evaluate(()=>scrollTo(0,0));const bounds=await page.locator('#page-schedule > .panel').first().boundingBox();await page.setViewportSize({width,height:Math.ceil(bounds.y+bounds.height+16)});await page.screenshot({path:path.join(out,`vg02-selected-${width}.png`)});
+  assert.deepEqual(await snapshot(page),before);await context.close();pass(width+'px all selected filter/sort texts fit with native-arrow reserve, screenshots, keyboard and touch');
+ }
+ fs.writeFileSync(path.join(out,'vg02-selected-text-metrics.json'),JSON.stringify({browser:browser.version(),platform:process.platform,cases:filterProof},null,2));
+ if(process.env.BROWSER_D03_ONLY==='1'){assert.deepEqual(errors,[]);console.log(`VG02 D03 visibility scenarios: ${passed}/${passed} PASS`);return;}
+ }
  const focusProof=[];
  const row=(page,name)=>page.locator('.sg-row').filter({has:page.getByRole('button',{name,exact:true})});
 
@@ -234,6 +265,14 @@ function pass(label){passed++;console.log('VG02 '+label+' PASS')}
  }
 
  {const data=JSON.parse(JSON.stringify(fixture));data.schedule=[data.schedule[0]];data.schedule[0].substeps=[0,1,2].map(i=>({title:'Стадия '+(i+1),start:date,end:'2026-12-05',status:'В работе',extension:{keep:i}}));const {page,context}=await open(1440,data),before=await snapshot(page);assert.equal(await page.locator('.sg-row').count(),4);assert.match(await page.locator('#scheduleSummary').innerText(),/3 работ/);assert.equal(await page.locator('#scheduleSummary .sg-working b').textContent(),'3');for(let i=1;i<=3;i++){await page.getByRole('button',{name:'Стадия '+i,exact:true}).click();assert.match(await page.locator('#scheduleWorkBody').innerText(),/Мастерская — испытание ВГ02/);assert.match(await page.locator('#scheduleWorkBody').innerText(),/Фундамент/);await page.locator('#scheduleWorkClose').click();}assert.deepEqual(await snapshot(page),before);await context.close();pass('three stages without objectId inherit read-only context and count exactly three leaves');
+ }
+
+ for(const failure of ['quota','conflict']){
+  const {page,context}=await open(390),before=await snapshot(page),dialogs=[];page.removeAllListeners('dialog');page.on('dialog',dialog=>{dialogs.push(dialog.message());return dialog.accept()});
+  await row(page,'Одинаковое название').first().getByRole('button').click();await page.locator('#scheduleWorkEdit').click();await page.locator('#scheduleForm [name=notes]').fill('Черновик стадии не терять');
+  if(failure==='quota')await page.evaluate(()=>{const write=Storage.prototype.setItem;Storage.prototype.setItem=function(key,value){if(key==='moiShtab_v03')throw Error('synthetic quota failure');return write.call(this,key,value)}});
+  else await page.evaluate(()=>{const raw=JSON.parse(localStorage.getItem('moiShtab_v03'));raw.schedule[0].notes='Внешнее изменение';localStorage.setItem('moiShtab_v03',JSON.stringify(raw))});
+  const expectedRaw=(await snapshot(page)).raw;await page.evaluate(()=>document.getElementById('scheduleForm').requestSubmit());assert.match(dialogs.at(-1),/Данные не сохранены/);const after=await snapshot(page);assert.equal(after.raw,expectedRaw);assert.equal(after.backup,before.backup);assert.deepEqual(after.confirmed,before.confirmed);assert.equal(after.memory,before.memory);assert.equal(await page.locator('#scheduleForm [name=notes]').inputValue(),'Черновик стадии не терять');assert.deepEqual(after.writes,failure==='quota'?[]:['moiShtab_v03']);await context.close();pass('stage card editor '+failure+' refuses without losing raw, extra fields, history, backup or draft');
  }
  const {page:empty,context:emptyContext}=await open(390,{...fixture,schedule:[]});
  assert.equal(await empty.locator('.sg-row').count(),0);
