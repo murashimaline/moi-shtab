@@ -1,0 +1,87 @@
+{
+  "mode": "headed-windows",
+  "browser": "158.0.4370.33",
+  "platform": "win32",
+  "node": "v24.22.3",
+  "implementationSHA256": "109aef2da508d046ba6643b033080a8da1fd80ac5626e548e7a68563d1807e8b",
+  "cases": [
+    {
+      "width": 1440,
+      "close": "Escape",
+      "originalWindow": 120533317,
+      "otherWindow": 120533322,
+      "events": [
+        {
+          "type": "focus",
+          "trusted": true,
+          "phase": "return"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "close": "button",
+      "originalWindow": 120533326,
+      "otherWindow": 120533330,
+      "events": [
+        {
+          "type": "focus",
+          "trusted": true,
+          "phase": "return"
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "close": "filtered",
+      "originalWindow": 120533334,
+      "otherWindow": 120533338,
+      "events": [
+        {
+          "type": "focus",
+          "trusted": true,
+          "phase": "return"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "close": "Escape",
+      "originalWindow": 120533342,
+      "otherWindow": 120533346,
+      "events": [
+        {
+          "type": "focus",
+          "trusted": true,
+          "phase": "return"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "close": "button",
+      "originalWindow": 120533350,
+      "otherWindow": 120533354,
+      "events": [
+        {
+          "type": "focus",
+          "trusted": true,
+          "phase": "return"
+        }
+      ]
+    },
+    {
+      "width": 390,
+      "close": "filtered",
+      "originalWindow": 120533358,
+      "otherWindow": 120533362,
+      "events": [
+        {
+          "type": "focus",
+          "trusted": true,
+          "phase": "return"
+        }
+      ]
+    }
+  ]
+}
